@@ -1,0 +1,48 @@
+<!DOCTYPE html>
+<html lang="fr">
+	<head>
+		<meta charset="UTF-8">
+		<meta name="viewport" content="width=device-width, initial-scale=1.0">
+		<title>Chimère Généalogique</title>
+		<link rel="stylesheet" href="dataviz.css" />
+	</head>
+	<body>
+		<div id="controls">
+			<label>Ouverture des bois (Angle)</label>
+			<input type="range" id="slider-spread" min="0.1" max="1.2" step="0.01" value="0.38">
+			<label>Longueur des branches</label>
+			<input type="range" id="slider-decay" min="0.5" max="0.95" step="0.01" value="0.82">
+			<label>Taille du Tronc (Base)</label>
+			<input type="range" id="slider-baselen" min="50" max="250" step="1" value="130">
+			<label>Épaisseur des bois</label>
+			<input type="range" id="slider-width" min="1" max="20" step="0.5" value="9">
+			<label>Courbure des branches</label>
+			<input type="range" id="slider-curvature" min="0" max="0.8" step="0.01" value="0.2">
+			<label>Taille des Nœuds (Cercles)</label>
+			<input type="range" id="slider-nodesize" min="0.5" max="5" step="0.1" value="1.8">
+			<label>Vitesse de respiration</label>
+			<input type="range" id="slider-speed" min="0" max="0.01" step="0.0001" value="0.002">
+			<label>Couleur Lignée Paternelle</label>
+			<input type="color" id="color-right" value="#c8a848">
+			<label>Couleur Lignée Maternelle</label>
+			<input type="color" id="color-left" value="#88b878">
+		</div>
+		<div id="ui">
+			<button class="btn" onclick="Chimere.resetView()">⌂ Centrer</button>
+			<button class="btn" onclick="document.getElementById('upload').click()">📷 Photo</button>
+			<input type="file" id="upload" accept="image/*" style="display:none" onchange="Chimere.handleImage(this)">
+			<button class="btn" onclick="Chimere.exportPNG()">↓ PNG</button>
+		</div>
+		<canvas id="c"></canvas>
+		<div id="panel">
+			<h3 id="p-name"></h3>
+			<div class="sub" id="p-dates"></div>
+			<div class="sub" id="p-place"></div>
+			<div class="gen" id="p-gen"></div>
+		</div>
+		<div id="hint">
+			Molette · zoom — Glisser · pan — Clic · infos
+		</div>
+		<script src="chimere.js"></script>
+	</body>
+</html>
