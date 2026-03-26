@@ -217,8 +217,8 @@ async function saveToDatabase() {
 	const newPath = currentPath.replace("edit.html", "index.html");
 
 	const shareUrl = window.location.protocol + "//" + window.location.host + newPath + "?u=" + userId;
-	console.log(`saveToDatabase => shareUrl:${shareUrl}`)
 
+	
 	if(confirm("Arbre sauvegardé ! Voici votre lien de partage :\n" + shareUrl + "\nVoulez-vous voir l'arbre en mode visualisation ?")) {
 		window.location.href = shareUrl;
 	}
