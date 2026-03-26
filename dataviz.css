@@ -1,33 +1,33 @@
 * { margin:0; padding:0; box-sizing:border-box; }
-	body { background:#0d0d0a; overflow:hidden; height:100vh; font-family:'Georgia',serif; color:#c8b87a; }
-	canvas { display:block; width:100vw; height:100vh; cursor:grab; }
-	canvas:active { cursor:grabbing; }
-	#ui {
+body { background:#0d0d0a; overflow:hidden; height:100vh; font-family:'Georgia',serif; color:#c8b87a; }
+canvas { display:block; width:100vw; height:100vh; cursor:grab; }
+canvas:active { cursor:grabbing; }
+#ui {
 	position:absolute; top:14px; left:50%; transform:translateX(-50%);
 	display:flex; gap:8px; z-index:10;
-	}
-	.btn {
+}
+.btn {
 	background:rgba(18,16,8,.88); border:1px solid #4a4a28; color:#b0a060;
 	padding:5px 13px; border-radius:16px; cursor:pointer; font-size:12px;
 	font-family:inherit; transition:.15s;
-	}
-	.btn:hover { border-color:#8a8040; color:#d8c870; }
-	#panel {
+}
+.btn:hover { border-color:#8a8040; color:#d8c870; }
+#panel {
 	position:absolute; right:14px; top:14px; width:220px;
 	background:rgba(10,10,6,.94); border:1px solid #3a3a1e; border-radius:8px;
 	padding:13px; font-size:12px; line-height:1.7; display:none;
-	}
-	#panel h3 { font-size:13px; color:#e8d880; font-weight:normal; margin-bottom:4px; }
-	#panel .sub { color:#6a7a3a; font-size:11px; }
-	#panel .gen { color:#9aaa50; font-style:italic; font-size:11px; margin-top:4px; }
-	#hint {
+}
+#panel h3 { font-size:13px; color:#e8d880; font-weight:normal; margin-bottom:4px; }
+#panel .sub { color:#6a7a3a; font-size:11px; }
+#panel .gen { color:#9aaa50; font-style:italic; font-size:11px; margin-top:4px; }
+#hint {
 	position:absolute; left:14px; bottom:14px;
 	font-size:11px; color:#3a3a1e; line-height:1.9; pointer-events:none;
-	}
-	#controls {
+}
+#controls {
 	position: absolute; left: 14px; top: 70px; width: 200px;
 	background: rgba(10, 10, 6, 0.9); border: 1px solid #3a3a28;
 	padding: 12px; border-radius: 8px; font-size: 11px; z-index: 100;
-	}
-	#controls label { display: block; margin-top: 8px; color: #8a8040; }
-	#controls input { width: 100%; cursor: pointer; margin-top: 4px; }
+}
+#controls label { display: block; margin-top: 8px; color: #8a8040; }
+#controls input { width: 100%; cursor: pointer; margin-top: 4px; }

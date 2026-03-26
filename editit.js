@@ -213,10 +213,8 @@ async function saveToDatabase() {
 	const userId = window.currentUserId;
 	await db_save(userId, data); 
 	
-
 	const shareUrl = window.location.origin + "/index.html?u=" + userId;
 
-	// Option B : Proposer une redirection
 	if(confirm("Arbre sauvegardé ! Voici votre lien de partage :\n" + shareUrl + "\n\nVoulez-vous voir l'arbre en mode visualisation ?")) {
 		window.location.href = shareUrl;
 	}
@@ -249,7 +247,6 @@ window.onload = async () => {
 		console.log("Données chargées pour : " + userId);
 	} else console.log("Nouvel arbre pour : " + userId);
 	
-
 	render(); 
 	resetView();
 };

@@ -35,7 +35,7 @@ async function db_load(nomUtilisateur) {
     return data ? data.contenu_json : null;
 }
 
-// Fonction pour PHOTOS
+// 
 async function db_upload_image(userId, file) {
     const fileName = `ego_${userId}_${Date.now()}.jpg`; // Nom unique
     
