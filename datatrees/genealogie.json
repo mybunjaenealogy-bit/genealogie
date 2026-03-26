@@ -1,0 +1,33 @@
+{
+  "ego": "ego",
+  "people": {
+    "ego": {
+      "id": "ego",
+      "name": "Matthieu Vincent",
+      "birth": 1982,
+      "death": null,
+      "place": "Paris",
+      "fatherId": "ffq1jt",
+      "motherId": "mvgs4x",
+      "siblings": []
+    },
+    "ffq1jt": {
+      "id": "ffq1jt",
+      "name": "",
+      "birth": null,
+      "place": "",
+      "fatherId": null,
+      "motherId": null,
+      "siblings": []
+    },
+    "mvgs4x": {
+      "id": "mvgs4x",
+      "name": "",
+      "birth": null,
+      "place": "",
+      "fatherId": null,
+      "motherId": null,
+      "siblings": []
+    }
+  }
+}
