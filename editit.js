@@ -213,7 +213,7 @@ async function saveToDatabase() {
 	const userId = window.currentUserId;
 	await db_save(userId, data); 
 	
-	const shareUrl = window.location.origin + "/index.html?u=" + userId;
+	const shareUrl = window.location.origin + "genealogie/index.html?u=" + userId;
 
 	if(confirm("Arbre sauvegardé ! Voici votre lien de partage :\n" + shareUrl + "\n\nVoulez-vous voir l'arbre en mode visualisation ?")) {
 		window.location.href = shareUrl;
