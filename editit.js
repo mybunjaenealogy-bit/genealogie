@@ -213,9 +213,13 @@ async function saveToDatabase() {
 	const userId = window.currentUserId;
 	await db_save(userId, data); 
 	
-	const shareUrl = window.location.origin + "genealogie/index.html?u=" + userId;
+	const currentPath = window.location.pathname;
+	const newPath = currentPath.replace("edit.html", "index.html");
 
-	if(confirm("Arbre sauvegardé ! Voici votre lien de partage :\n" + shareUrl + "\n\nVoulez-vous voir l'arbre en mode visualisation ?")) {
+	const shareUrl = window.location.protocol + "//" + window.location.host + newPath + "?u=" + userId;
+	console.log(`saveToDatabase => shareUrl:${shareUrl}`)
+
+	if(confirm("Arbre sauvegardé ! Voici votre lien de partage :\n" + shareUrl + "\nVoulez-vous voir l'arbre en mode visualisation ?")) {
 		window.location.href = shareUrl;
 	}
 }
@@ -232,6 +236,7 @@ window.onload = async () => {
 		
 		// On l'ajoute à l'URL proprement pour que l'utilisateur puisse copier le lien
 		const newUrl = window.location.protocol + "//" + window.location.host + window.location.pathname + '?u=' + userId;
+		console.log(`window.location.host: ${window.location.host} && window.location.pathname: ${window.location.pathname}`)
 		window.history.pushState({ path: newUrl }, '', newUrl);
 		
 		console.log("Nouvel identifiant généré :", userId);
