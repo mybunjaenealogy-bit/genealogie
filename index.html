@@ -5,6 +5,7 @@
 		<meta name="viewport" content="width=device-width, initial-scale=1.0">
 		<title>Chimère Généalogique</title>
 		<link rel="stylesheet" href="dataviz.css" />
+		<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 	</head>
 	<body>
 		<div id="controls">
@@ -29,6 +30,7 @@
 		</div>
 		<div id="ui">
 			<button class="btn" onclick="Chimere.resetView()">⌂ Centrer</button>
+			<button class="btn" id="btn-edit" onclick="Chimere.goToEdit()">✎ Édition</button>
 			<button class="btn" onclick="document.getElementById('upload').click()">📷 Photo</button>
 			<input type="file" id="upload" accept="image/*" style="display:none" onchange="Chimere.handleImage(this)">
 			<button class="btn" onclick="Chimere.exportPNG()">↓ PNG</button>
@@ -43,6 +45,7 @@
 		<div id="hint">
 			Molette · zoom — Glisser · pan — Clic · infos
 		</div>
+		<script src="supachimerae.js"></script>
 		<script src="chimere.js"></script>
 	</body>
 </html>

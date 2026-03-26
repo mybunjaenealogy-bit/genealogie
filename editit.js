@@ -1,7 +1,7 @@
 let data = {
 	"ego": "ego",
 	"people": {
-		"ego": { "id": "ego", "name": "Matthieu Vincent", "birth": 1982, "death": null, "place": "Paris", "fatherId": null, "motherId": null, "siblings": [] }
+		"ego": { "id": "ego", "name": "Prénom Nom", "birth": null, "death": null, "place": "Ville de naissance", "fatherId": null, "motherId": null, "siblings": [] }
 	}
 };
 
@@ -210,27 +210,46 @@ function downloadJSON() {
 
 // Remplace ta fonction de sauvegarde par celle-ci :
 async function saveToDatabase() {
-    const userId = window.currentUserId || "matthieu_v";
-    await db_save(userId, data); 
+	const userId = window.currentUserId;
+	await db_save(userId, data); 
+	
+
+	const shareUrl = window.location.origin + "/index.html?u=" + userId;
+
+	// Option B : Proposer une redirection
+	if(confirm("Arbre sauvegardé ! Voici votre lien de partage :\n" + shareUrl + "\n\nVoulez-vous voir l'arbre en mode visualisation ?")) {
+		window.location.href = shareUrl;
+	}
 }
 
 window.onload = async () => {
-    // 1. On regarde s'il y a un utilisateur dans l'URL, sinon on prend "matthieu_v"
-    const urlParams = new URLSearchParams(window.location.search);
-    const userId = urlParams.get('u') || "matthieu_v"; 
-    
-    // On garde cet ID en mémoire pour la sauvegarde plus tard
-    window.currentUserId = userId; 
+	// 1. On regarde s'il y a un utilisateur dans l'URL, sinon on prend "matthieu_v"
+	const urlParams = new URLSearchParams(window.location.search);
+	let userId = urlParams.get('u'); 
+	
+	// SI NOUVEL ARBRE (Pas d'ID dans l'URL)
+	if (!userId) {
+		// On génère un ID court et aléatoire (ex: tree-a1b2c3)
+		userId = "chime-" + Math.random().toString(36).substring(2, 9);
+		
+		// On l'ajoute à l'URL proprement pour que l'utilisateur puisse copier le lien
+		const newUrl = window.location.protocol + "//" + window.location.host + window.location.pathname + '?u=' + userId;
+		window.history.pushState({ path: newUrl }, '', newUrl);
+		
+		console.log("Nouvel identifiant généré :", userId);
+	}
 
-    const cloudData = await db_load(userId);
+	// On garde cet ID en mémoire pour la sauvegarde plus tard
+	window.currentUserId = userId; 
 
-    if (cloudData) {
-        data = cloudData; 
-        console.log("Données chargées pour : " + userId);
-    } else {
-        console.log("Nouvel arbre pour : " + userId);
-    }
+	const cloudData = await db_load(userId);
 
-    render(); 
-    resetView();
+	if (cloudData) {
+		data = cloudData; 
+		console.log("Données chargées pour : " + userId);
+	} else console.log("Nouvel arbre pour : " + userId);
+	
+
+	render(); 
+	resetView();
 };

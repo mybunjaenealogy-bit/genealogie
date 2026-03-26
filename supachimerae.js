@@ -34,3 +34,25 @@ async function db_load(nomUtilisateur) {
     }
     return data ? data.contenu_json : null;
 }
+
+// Fonction pour PHOTOS
+async function db_upload_image(userId, file) {
+    const fileName = `ego_${userId}_${Date.now()}.jpg`; // Nom unique
+    
+    // 1. Envoyer le fichier dans le bucket 'avatars'
+    const { data, error } = await client.storage
+        .from('avatars')
+        .upload(fileName, file);
+
+    if (error) {
+        console.error("Erreur upload:", error);
+        return null;
+    }
+
+    // 2. Récupérer l'URL publique du fichier
+    const { data: urlData } = client.storage
+        .from('avatars')
+        .getPublicUrl(fileName);
+
+    return urlData.publicUrl;
+}
