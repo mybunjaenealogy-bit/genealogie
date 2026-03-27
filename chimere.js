@@ -5,9 +5,9 @@
  *	 Ego = point de départ. Bois DROIT = lignée paternelle, GAUCHE = maternelle.
  *  ═══════════════════════════════════════════════════════════════════ */
 const Chimere = (() => {
-	let DB = { people: {} }; // Sera rempli par le JSON
-	let isDataLoaded = false; // Sécurité pour le rendu
-
+	let DB = { people: {} }; 	// Sera rempli par le JSON
+	let isDataLoaded = false; 	// Sécurité pour le rendu
+	let isPhotoMode = false; 	// Le mode "Interrupteur"
 	// PARAMÈTRES VISUELS
 	const P = {
 		// Visage
@@ -42,7 +42,13 @@ const Chimere = (() => {
 	let animT = 0;
 	
 	let userImage = null; // Stockera l'objet Image
-
+	let imgTransform = {
+	    x: 0,       // Décalage X par rapport au centre du visage
+	    y: 0,       // Décalage Y
+	    scale: 1.0  // Zoom propre à l'image
+	};
+	let isTransformingImg = false; // Pour savoir si on drag l'image ou la caméra
+	let wheelSaveTimeout;
 	// HELPERS COORDS
 	const w2s = (wx, wy) => ({ // World to Screen
 		x: W/2 + (wx + cam.x) * cam.scale,
@@ -425,38 +431,42 @@ const Chimere = (() => {
 	// DESSIN DU VISAGE HUMAIN (stylisé, silhouette)
 	// ══════════════════════════════════════════════════════
 	function drawFace() {
+	    const o = w2s(0, 0);  // Centre du monde (le front/visage)
+	    const sc = cam.scale;
 
-		const o = w2s(0, 0);  // centre en coords écran
-		const sc = cam.scale;
+	    if (userImage) {
+	        ctx.save();
+	        // 1. Créer le masque elliptique pour le visage (fixe par rapport aux bois)
+	        ctx.beginPath();
+	        ctx.ellipse(o.x, o.y, P.faceW * sc, P.faceH * sc, 0, 0, Math.PI * 2);
+	        ctx.clip();
+	        
+	        // 2. Calculer la taille de base pour que l'image remplisse l'ellipse
+	        const aspect = userImage.width / userImage.height;
+	        const baseH = P.faceH * 2.2 * sc;
+	        const baseW = baseH * aspect;
 
-		if (userImage) {
-			ctx.save();
-			ctx.beginPath();
+	        // 3. Appliquer les transformations utilisateur (imgTransform)
+	        // On ajoute le décalage multiplié par le scale de la caméra
+	        const drawX = o.x - (baseW / 2) + (imgTransform.x * sc);
+	        const drawY = o.y - (baseH / 2) + (imgTransform.y * sc);
+	        const drawW = baseW * imgTransform.scale;
+	        const drawH = baseH * imgTransform.scale;
 
-			ctx.ellipse(o.x, o.y, P.faceW * sc, P.faceH * sc, 0, 0, Math.PI * 2);
-			ctx.clip();
-			
-			const aspect = userImage.width / userImage.height;
-			const drawH = P.faceH * 2.2 * sc;
-			const drawW = drawH * aspect;
-			ctx.drawImage(userImage, o.x - drawW/2, o.y - drawH/2, drawW, drawH);
-			
-			// 3. LA MÉTHODE ALTERNATIVE POUR LE NOIR ET BLANC
-			// On dessine un rectangle gris par-dessus avec le mode "color"
-			// Cela retire la saturation de tout ce qui est en dessous
-			ctx.globalCompositeOperation = 'color';
-			ctx.fillStyle = 'gray';
-			ctx.fillRect(o.x - drawW/2, o.y - drawH/2, drawW, drawH);
-			
-			// 4. On remet le mode par défaut et on ajoute un peu de contraste
-			ctx.globalCompositeOperation = 'overlay';
-			ctx.fillStyle = 'rgba(0,0,0,0.2)'; // Assombrit légèrement pour le look ancien
-			ctx.fillRect(o.x - drawW/2, o.y - drawH/2, drawW, drawH);
+	        ctx.drawImage(userImage, drawX, drawY, drawW, drawH);
+	        
+	        // Effets Noir & Blanc
+	        ctx.globalCompositeOperation = 'color';
+	        ctx.fillStyle = 'gray';
+	        ctx.fillRect(drawX, drawY, drawW, drawH);
+	        
+	        ctx.globalCompositeOperation = 'overlay';
+	        ctx.fillStyle = 'rgba(0,0,0,0.2)';
+	        ctx.fillRect(drawX, drawY, drawW, drawH);
 
-			ctx.restore();
-
-		} else {
-			// Lueur douce derrière le visage
+	        ctx.restore();
+	    } else {
+	        // Lueur douce derrière le visage
 			const grd = ctx.createRadialGradient(o.x, o.y, 0, o.x, o.y, P.faceH * 1.4 * sc);
 			grd.addColorStop(0,   'rgba(200,160,60,0.10)');
 			grd.addColorStop(0.5, 'rgba(180,130,40,0.04)');
@@ -540,7 +550,7 @@ const Chimere = (() => {
 			ctx.globalAlpha = 0.4;
 			ctx.stroke();
 			ctx.restore();
-		}
+	    }
 	}
 
 	// ══════════════════════════════════════════════════════
@@ -679,38 +689,109 @@ const Chimere = (() => {
 	// INTERACTIONS
 	// ══════════════════════════════════════════════════════
 	function bindEvents() {
+		const btnPhoto = document.getElementById('btn-mode-photo');
+		// Toggle du bouton
+	    if (btnPhoto) {
+		    btnPhoto.addEventListener('click', async () => {
+		        isPhotoMode = !isPhotoMode;
+		        
+		        if (!isPhotoMode) {
+		            // ON VIENT DE PASSER SUR OFF : On enregistre enfin
+		            console.log("Fin d'édition : sauvegarde des réglages...");
+		            await saveImageSettings(); 
+		            btnPhoto.innerHTML = "🖼️ Ajuster la photo : OFF";
+		            btnPhoto.classList.remove('active');
+		        } else {
+		            // ON VIENT D'ACTIVER LE MODE
+		            btnPhoto.innerHTML = "✅ Valider le placement";
+		            btnPhoto.classList.add('active');
+		        }
+		        
+		        canvas.style.cursor = isPhotoMode ? 'move' : 'grab';
+		    });
+		}
 		canvas.addEventListener('mousedown', e => {
-			drag.on=true; drag.sx=e.clientX; drag.sy=e.clientY; drag.cx=cam.x; drag.cy=cam.y;
-		});
-		canvas.addEventListener('mousemove', e => {
-			if (drag.on) {
-				cam.x = drag.cx + (e.clientX - drag.sx) / cam.scale;
-				cam.y = drag.cy + (e.clientY - drag.sy) / cam.scale;
-			} else {
-				hover = hitTest(e.clientX, e.clientY);
-				canvas.style.cursor = hover ? 'pointer' : 'grab';
-			}
-		});
+	        drag.on = true; 
+	        drag.sx = e.clientX; 
+	        drag.sy = e.clientY;
+	        
+	        // Si Shift est enfoncé, on bouge l'image
+	        isTransformingImg = isPhotoMode; 
+	        
+	        drag.cx = isTransformingImg ? imgTransform.x : cam.x;
+	        drag.cy = isTransformingImg ? imgTransform.y : cam.y;
+	    });
+
+	    canvas.addEventListener('mousemove', e => {
+	        if (drag.on) {
+	            const dx = (e.clientX - drag.sx) / cam.scale;
+	            const dy = (e.clientY - drag.sy) / cam.scale;
+
+	            if (isTransformingImg) {
+	                imgTransform.x = drag.cx + dx;
+	                imgTransform.y = drag.cy + dy;
+	            } else {
+	                cam.x = drag.cx + dx;
+	                cam.y = drag.cy + dy;
+	            }
+	        } else {
+	            hover = hitTest(e.clientX, e.clientY);
+	            canvas.style.cursor = hover ? 'pointer' : (isPhotoMode ? 'move' : 'grab');
+	        }
+	    });
 		canvas.addEventListener('mouseup', e => {
-			const moved = Math.hypot(e.clientX-drag.sx, e.clientY-drag.sy);
-			drag.on = false;
-			if (moved < 5) { sel = hitTest(e.clientX, e.clientY); showPanel(sel); }
+		    const moved = Math.hypot(e.clientX - drag.sx, e.clientY - drag.sy);
+		    drag.on = false;
+		    // On ne reset pas isTransformingImg ici car on attend le bouton OFF
+		    if (moved < 5) { 
+		        sel = hitTest(e.clientX, e.clientY); 
+		        showPanel(sel); 
+		    }
 		});
 		canvas.addEventListener('wheel', e => {
-			e.preventDefault();
-			cam.scale = Math.min(4, Math.max(0.12, cam.scale * (e.deltaY < 0 ? 1.1 : 0.91)));
-		}, { passive:false });
+		    e.preventDefault();
+		    if (e.shiftKey || isPhotoMode) {
+		        const delta = e.deltaY < 0 ? 1.05 : 0.95;
+		        imgTransform.scale = Math.min(5, Math.max(0.2, imgTransform.scale * delta));
+		    } else {
+		        cam.scale = Math.min(4, Math.max(0.12, cam.scale * (e.deltaY < 0 ? 1.1 : 0.91)));
+		    }
+		}, { passive: false });
 		let td=0;
 		canvas.addEventListener('touchstart', e => {
 			if (e.touches.length===1) { drag.on=true; drag.sx=e.touches[0].clientX; drag.sy=e.touches[0].clientY; drag.cx=cam.x; drag.cy=cam.y; }
 			else if (e.touches.length===2) { drag.on=false; td=Math.hypot(e.touches[0].clientX-e.touches[1].clientX,e.touches[0].clientY-e.touches[1].clientY); }
 		});
 		canvas.addEventListener('touchmove', e => {
-			e.preventDefault();
-			if (e.touches.length===1 && drag.on) { cam.x=drag.cx+(e.touches[0].clientX-drag.sx)/cam.scale; cam.y=drag.cy+(e.touches[0].clientY-drag.sy)/cam.scale; }
-			else if (e.touches.length===2) { const d=Math.hypot(e.touches[0].clientX-e.touches[1].clientX,e.touches[0].clientY-e.touches[1].clientY); cam.scale=Math.min(4,Math.max(0.12,cam.scale*d/td)); td=d; }
-		}, { passive:false });
-		canvas.addEventListener('touchend', ()=>{ drag.on=false; });
+		    e.preventDefault();
+		    if (e.touches.length === 1 && drag.on) {
+		        // Calcul du déplacement
+		        const dx = (e.touches[0].clientX - drag.sx) / cam.scale;
+		        const dy = (e.touches[0].clientY - drag.sy) / cam.scale;
+
+		        if (isPhotoMode) {
+		            // Déplace la photo si le bouton mode édition est ON
+		            imgTransform.x = drag.cx + dx;
+		            imgTransform.y = drag.cy + dy;
+		        } else {
+		            // Déplace la scène par défaut
+		            cam.x = drag.cx + dx;
+		            cam.y = drag.cy + dy;
+		        }
+		    }
+		    else if (e.touches.length === 2) { 
+		        // Pinch-to-zoom (Inchangé, zoome la scène globale)
+		        const d = Math.hypot(e.touches[0].clientX - e.touches[1].clientX, e.touches[0].clientY - e.touches[1].clientY); 
+		        cam.scale = Math.min(4, Math.max(0.12, cam.scale * d / td)); 
+		        td = d; 
+		    }
+		}, { passive: false });
+		canvas.addEventListener('touchend', async () => { 
+		    if (drag.on && isPhotoMode) {
+		        await saveImageSettings();
+		    }
+		    drag.on = false; 
+		});
 		window.addEventListener('resize', resize);
 
 		// Nouveaux écouteurs pour les contrôles
@@ -727,6 +808,23 @@ const Chimere = (() => {
 	// ══════════════════════════════════════════════════════
 	// API PUBLIQUE
 	// ══════════════════════════════════════════════════════
+	async function saveImageSettings() {
+	    const urlParams = new URLSearchParams(window.location.search);
+	    const userId = urlParams.get('u');
+
+	    if (userId && DB.people[DB.ego]) {
+	        // 1. Mettre à jour l'objet local
+	        DB.people[DB.ego].imgSettings = { ...imgTransform };
+
+	        // 2. Envoyer la version complète du JSON au cloud
+	        try {
+	            await db_save(userId, DB);
+	            console.log("Réglages photo synchronisés avec le Cloud.");
+	        } catch (err) {
+	            console.error("Erreur lors de la sauvegarde auto :", err);
+	        }
+	    }
+	}
 	function goToEdit() {
 		const urlParams = new URLSearchParams(window.location.search);
 		const userId = urlParams.get('u');
@@ -757,7 +855,7 @@ const Chimere = (() => {
 			if (publicUrl) {
 				// 3. On enregistre l'URL dans les données de l'Ego
 				DB.people[DB.ego].photoUrl = publicUrl;
-				
+				DB.people[DB.ego].imgSettings = imgTransform;
 				// 4. On sauvegarde tout le JSON pour que le lien soit définitif
 				await db_save(userId, DB); 
 				console.log("Photo enregistrée et liée à l'Ego !");
@@ -806,6 +904,8 @@ const Chimere = (() => {
 					};
 					img.src = DB.people[DB.ego].photoUrl;
 				}
+				if (DB.people[DB.ego].imgSettings) imgTransform = DB.people[DB.ego].imgSettings;
+				
 
 			} else {
 				console.warn("Utilisateur inconnu dans le Cloud, chargement du local par défaut.");

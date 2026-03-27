@@ -12,6 +12,11 @@ canvas:active { cursor:grabbing; }
 	font-family:inherit; transition:.15s;
 }
 .btn:hover { border-color:#8a8040; color:#d8c870; }
+.btn.active {
+    background: #e8d078;
+    color: #1a1a0a;
+    box-shadow: 0 0 10px rgba(232, 208, 120, 0.5);
+}
 #panel {
 	position:absolute; right:14px; top:14px; width:220px;
 	background:rgba(10,10,6,.94); border:1px solid #3a3a1e; border-radius:8px;

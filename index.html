@@ -4,7 +4,7 @@
 		<meta charset="UTF-8">
 		<meta name="viewport" content="width=device-width, initial-scale=1.0">
 		<title>Chimère Généalogique</title>
-		<link rel="stylesheet" href="dataviz.css" />
+		<link rel="stylesheet" href="chimere.css" />
 		<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 	</head>
 	<body>
@@ -31,6 +31,7 @@
 			<button class="btn" id="btn-edit" onclick="Chimere.goToEdit()">✎ Édition</button>
 			<button class="btn" onclick="document.getElementById('upload').click()">📷 Photo</button>
 			<input type="file" id="upload" accept="image/*" style="display:none" onchange="Chimere.handleImage(this)">
+			<button id="btn-mode-photo" class="btn">🖼️ Ajuster la photo : OFF</button>
 			<button class="btn" onclick="Chimere.exportPNG()">↓ PNG</button>
 		</div>
 		<canvas id="c"></canvas>
