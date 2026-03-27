@@ -54,14 +54,27 @@ function getSubtreeWidth(id) {
 
 let nodePos = {};
 function computeLayout(id, x, y) {
-	if (!id || !data.people[id]) return;
-	nodePos[id] = { x, y };
-	const p = data.people[id];
-	const fw = getSubtreeWidth(p.fatherId);
-	const mw = getSubtreeWidth(p.motherId);
-	const totalW = fw + mw + GAP_X;
-	if (p.fatherId) computeLayout(p.fatherId, x - totalW/2 + fw/2, y - GAP_Y);
-	if (p.motherId) computeLayout(p.motherId, x + totalW/2 - mw/2, y - GAP_Y);
+    if (!id || !data.people[id]) return;
+    nodePos[id] = { x, y };
+    const p = data.people[id];
+
+    // 1. Remonter aux parents (ton code actuel)
+    const fw = getSubtreeWidth(p.fatherId);
+    const mw = getSubtreeWidth(p.motherId);
+    const totalW = fw + mw + GAP_X;
+    if (p.fatherId) computeLayout(p.fatherId, x - totalW/2 + fw/2, y - GAP_Y);
+    if (p.motherId) computeLayout(p.motherId, x + totalW/2 - mw/2, y - GAP_Y);
+
+    // 2. Descendre aux enfants
+    if (p.children && p.children.length > 0) {
+        const childCount = p.children.length;
+        const totalChildW = childCount * (CARD_W + GAP_X);
+        p.children.forEach((cId, i) => {
+            const cx = x - totalChildW/2 + (i * (CARD_W + GAP_X)) + CARD_W/2;
+            // On vérifie si le nœud n'a pas déjà été positionné (évite les boucles infinies)
+            if (!nodePos[cId]) computeLayout(cId, cx, y + GAP_Y);
+        });
+    }
 }
 
 // --- RENDU ---
@@ -100,11 +113,19 @@ function render() {
 					<div style="font-size:12px; color:#666">${p.birth || ''} ${p.place || ''}</div>
 				</div>
 			</div>
+			<div class="card-footer-btns" style="text-align:center; margin-top:8px; border-top:1px solid #eee; padding-top:4px;">
+				<button class="btn-mini" onclick="event.stopPropagation(); addChild('${id}')">+ Enfant</button>
+			</div>
 		`;
 		container.appendChild(div);
 
 		if (p.fatherId && nodePos[p.fatherId]) drawBezier(ctx, pos, nodePos[p.fatherId]);
 		if (p.motherId && nodePos[p.motherId]) drawBezier(ctx, pos, nodePos[p.motherId]);
+		if (p.children) {
+		    p.children.forEach(childId => {
+		        if (nodePos[childId]) drawBezierChild(ctx, pos, nodePos[childId]);
+		    });
+		}
 	});
 }
 
@@ -120,6 +141,20 @@ function drawBezier(ctx, childPos, parentPos) {
 	ctx.stroke();
 }
 
+// --- NOUVELLE FONCTION DE DESSIN (vers le bas) ---
+function drawBezierChild(ctx, parentPos, childPos) {
+    const start = { x: parentPos.x + CARD_W/2, y: parentPos.y + CARD_H };
+    const end = { x: childPos.x + CARD_W/2, y: childPos.y };
+    ctx.beginPath();
+    ctx.moveTo(start.x, start.y);
+    const cpY = start.y + (GAP_Y / 2.5);
+    ctx.bezierCurveTo(start.x, cpY, end.x, cpY, end.x, end.y);
+    ctx.strokeStyle = "#94a3b8"; // Couleur différente pour distinguer
+    ctx.setLineDash([5, 5]); // Optionnel : tirets pour les enfants
+    ctx.stroke();
+    ctx.setLineDash([]);
+}
+
 function getInitials(name) {
 	if (!name) return "??";
 	const words = name.trim().split(/\s+/);
@@ -133,6 +168,30 @@ function addParent(childId, type) {
 	const newId = (type === 'father' ? 'f' : 'm') + Math.random().toString(36).substr(2, 5);
 	data.people[newId] = { "id": newId, "name": "", "birth": null, "place": "", "fatherId": null, "motherId": null, "siblings": [] };
 	if(type === 'father') p.fatherId = newId; else p.motherId = newId;
+	render();
+}
+
+function addChild(parentId) {
+	const p = data.people[parentId];
+	// Initialise le tableau s'il n'existe pas
+	if (!p.children) p.children = [];
+	
+	const newId = 'c' + Math.random().toString(36).substr(2, 5);
+	
+	// Crée le nouvel enfant
+	data.people[newId] = { 
+		"id": newId, 
+		"name": "Nouvel Enfant", 
+		"birth": null, 
+		"place": "", 
+		"fatherId": null, 
+		"motherId": null, 
+		"children": [] 
+	};
+	
+	// Lie l'enfant au parent
+	p.children.push(newId);
+	
 	render();
 }
 
@@ -208,7 +267,6 @@ function downloadJSON() {
 	a.href = URL.createObjectURL(blob); a.download = "genealogie.json"; a.click();
 }
 
-// Remplace ta fonction de sauvegarde par celle-ci :
 async function saveToDatabase() {
 	const userId = window.currentUserId;
 	await db_save(userId, data); 

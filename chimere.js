@@ -1,53 +1,39 @@
-/* ═══════════════════════════════════════════════════════════════════
-		 Chimere — Arbre généalogique en bois de cerf
-		 Structure JSON : chaque personne a un id, ses infos, et optionnellement
-		 fatherId / motherId pour remonter les lignées.
-		 Ego = point de départ. Bois DROIT = lignée paternelle, GAUCHE = maternelle.
- ═══════════════════════════════════════════════════════════════════ */
+/** ═══════════════════════════════════════════════════════════════════
+ *	 CHIMERE — Arbre généalogique en bois de cerf
+ *	 Structure JSON : chaque personne a un id, ses infos, et optionnellement
+ *	 fatherId / motherId pour remonter les lignées.
+ *	 Ego = point de départ. Bois DROIT = lignée paternelle, GAUCHE = maternelle.
+ *  ═══════════════════════════════════════════════════════════════════ */
 const Chimere = (() => {
-	// 1. ÉTAT PRIVÉ
 	let DB = { people: {} }; // Sera rempli par le JSON
 	let isDataLoaded = false; // Sécurité pour le rendu
 
-	// ══════════════════════════════════════════════════════
 	// PARAMÈTRES VISUELS
-	// ══════════════════════════════════════════════════════
 	const P = {
 		// Visage
 		faceH:     130,   // demi-hauteur du visage
 		faceW:     78,    // demi-largeur du visage
-		eyeOffY:   -18,   // Y des yeux par rapport au centre
+		eyeOffY:  -18,    // Y des yeux par rapport au centre
 		eyeOffX:   28,    // X des yeux
 		noseLen:   22,    // longueur du nez
 		// Bois
-		trunkLen:  90,    // longueur du tronc du bois (col du cerf)
 		trunkW:    9,     // épaisseur du tronc
-		branchDecay: 0.82, //0.68, // facteur de réduction longueur par génération
-		widthDecay:  0.75, //0.62, // facteur de réduction épaisseur par génération
-		baseLen:   130,   // longueur du 1er segment du bois
+		branchDecay: 0.68, //0.82, // facteur de réduction longueur par génération
+		widthDecay:  0.62, //0.75, // facteur de réduction épaisseur par génération
+		baseLen:   100,   // longueur du 1er segment du bois
 		// Angles de base : bois droit part vers la droite-haut, gauche vers gauche-haut
-		rightBaseAngle: -Math.PI * 0.22,   // angle initial bois droit (depuis vertical)
-		leftBaseAngle:  -Math.PI * 0.78,   // angle initial bois gauche
-		forkSpread:  0.38,  // demi-angle de fourche à chaque bifurcation
+		forkSpread:  0.68,  // demi-angle de fourche à chaque bifurcation
 		// Couleurs
-		colFace:    '#c8a060',
 		colFaceStroke: '#5a3a18',
 		colBoneR:   '#c8a848',  // bois paternel (doré chaud)
 		colBoneL:   '#88b878',  // bois maternel (vert doux)
 		colUnknown: '#3a3a28',  // ancêtre inconnu / manquant
-		colEye:     '#1a1008',
-		colLabel:   '#e8d880',
-		colSubLabel:'#6a7040',
-		colGlow:    'rgba(200,168,72,0.12)',
-		nodeSizeMult: 1.8,  // Multiplicateur pour la taille des cercles
 		curvature: 0.2,     // Facteur de courbure (0 = droit, 0.5 = très courbé)
 		oscSpeed: 0.002, // Vitesse de la respiration
 		oscAmp: 0.03     // Amplitude du mouvement
 	};
 
-	// ══════════════════════════════════════════════════════
 	// ÉTAT RUNTIME
-	// ══════════════════════════════════════════════════════
 	let canvas, ctx, W, H;
 	let cam   = { x:0, y:0, scale:1 };
 	let drag  = { on:false, sx:0, sy:0, cx:0, cy:0 };
@@ -57,34 +43,30 @@ const Chimere = (() => {
 	
 	let userImage = null; // Stockera l'objet Image
 
-	// ══════════════════════════════════════════════════════
 	// HELPERS COORDS
-	// ══════════════════════════════════════════════════════
-	const w2s = (wx, wy) => ({
+	const w2s = (wx, wy) => ({ // World to Screen
 		x: W/2 + (wx + cam.x) * cam.scale,
 		y: H/2 + (wy + cam.y) * cam.scale,
 	});
-	const s2w = (sx, sy) => ({
+	const s2w = (sx, sy) => ({ // Screen to World
 		x: (sx - W/2) / cam.scale - cam.x,
 		y: (sy - H/2) / cam.scale - cam.y,
 	});
 
 	// 2. LE CHARGEMENT (La clé du problème)
 	async function loadData(url) {
-			try {
-					const response = await fetch(url);
-					const json = await response.json();
-					DB = json;
-					isDataLoaded = true;
-					console.log("Données chargées avec succès");
-			} catch (err) {
-					console.error("Erreur critique au chargement du JSON :", err);
-			}
+		try {
+			const response = await fetch(url);
+			const json = await response.json();
+			DB = json;
+			isDataLoaded = true;
+			console.log("Données chargées avec succès");
+		} catch (err) {
+			console.error("Erreur critique au chargement du JSON :", err);
+		}
 	}
 
-	// ══════════════════════════════════════════════════════
 	// CALCUL DE PROFONDEUR MAX (pour normaliser l'opacité)
-	// ══════════════════════════════════════════════════════
 	function maxDepth(id, depth=0) {
 		const p = DB.people[id];
 		if (!p) return depth;
@@ -94,39 +76,140 @@ const Chimere = (() => {
 		);
 	}
 
-	// ══════════════════════════════════════════════════════
-	// DESSIN DU BOIS (récursif)
-	// id       : identifiant de la personne représentée par ce segment
-	// x1,y1    : point de départ du segment (coords monde)
-	// angle    : direction du segment (radians, 0=droite, -PI/2=haut)
-	// length   : longueur du segment
-	// width    : épaisseur du segment
-	// depth    : profondeur actuelle (0=tronc direct)
-	// side     : 'R' ou 'L' (pour la couleur de base)
-	// isPaternal : true si ce nœud est dans la lignée paternelle
-	// ══════════════════════════════════════════════════════
+
 	// Génère un nombre "pseudo-aléatoire" stable
 	const stableRandom = (s) => {
 		const x = Math.sin(s) * 10000;
 		return x - Math.floor(x);
 	};
 
+	/** DESSIN DU BOIS (récursif)
+	 * id       : identifiant de la personne représentée par ce segment
+	 * x1,y1    : point de départ du segment (coords monde)
+	 * angle    : direction du segment (radians, 0=droite, -PI/2=haut)
+	 * length   : longueur du segment
+	 * width    : épaisseur du segment
+	 * depth    : profondeur actuelle (0=tronc direct)
+	 * side     : 'R' ou 'L' (pour la couleur de base)
+	 */
 	function drawAntler(id, x1, y1, angle, length, width, depth, side) {
 		const person = (id && DB.people[id]) ? DB.people[id] : null;
 		const known = !!person;
 		const col = known ? (side === 'R' ? P.colBoneR : P.colBoneL) : P.colUnknown;
-		const baseAlpha = known ? Math.max(0.1, 0.4 - depth * 0.05) : 0.05;
+		
+		// 1. Calcul de l'atténuation exponentielle de l'opacité (pour la profondeur)
+		const attenuationFactor = Math.pow(0.72, depth);
+		const baseAlpha = known ? (0.5 * attenuationFactor) : (0.1 * attenuationFactor);
 
+		// 2. Calcul de l'animation de balancement (sway)
 		const time = Date.now() * P.oscSpeed;
 		const sway = Math.sin(time + (depth * 0.5)) * P.oscAmp;
-		const animatedAngle = angle + sway;
+		const animatedAngle = angle + sway; // C'est l'angle que tout le monde doit utiliser
 
-		const numFibers = known ? 20 : 5; 
+		// 3. Dessin des piques de l'ancêtre inconnu (known=false)
+		const numFibers = known ? 50 : 10;
 		const sStart = w2s(x1, y1);
 		
 		ctx.save();
 		ctx.lineCap = 'round';
 
+		// ── Filtre de désaturation pour la profondeur (Optionnel, désactive si ça rame)
+		if (depth > 0) ctx.filter = `saturate(${Math.max(0.5, 1 - depth * 0.5)}) brightness(${Math.max(0.5, 1 - depth * 0.5)})`;
+
+		// ===================================================================
+		// --- AJOUT DU TRONC ET DE LA ROSETTE AU NIVEAU 0 ---
+		// ===================================================================
+		if (depth === 0) {
+			
+			// --- A. LE TRONC CORRIGÉ (Désormais visible et animé) ---
+			// J'utilise 30 comme longueur fixe pour qu'il soit toujours visible.
+			const baseTrunkLen = 20; // CORRECTION : Éviter d'indexer sur trunkW qui est une épaisseur
+			const baseTrunkW = width * 1.1;
+			// On calcule la fin du socle osseux osseux avec l'angle ANIMÉ
+			const tx2 = x1 + Math.cos(animatedAngle) * baseTrunkLen;
+			const ty2 = y1 + Math.sin(animatedAngle) * baseTrunkLen;
+			
+			// On appelle drawTrunk (qui dessine les fibres denses du socle)
+			// drawTrunk ne contient pas de rosette.
+			drawTrunk(x1, y1, tx2, ty2, baseTrunkW, col);
+			
+			// IMPORTANT : On décale le point de départ de la ramure pour qu'elle commence APRÈS le socle
+			// J'enlève le "- 2" et "- 4" que tu avais, qui décalaient la base.
+			const branchStartX = tx2; 
+			const branchStartY = ty2;
+
+			// --- B. LA ROSETTE CORRIGÉE (Fine, dense et lumineuse) ---
+			// On utilise la couleur spécifique pour la rosette (plus claire)
+			const rosetteCol = known ? (side === 'R' ? '#FFE8A0' : '#B8E8A8') : P.colUnknown;
+
+			// Paramètres de densité et taille (inchangés)
+			const sizeMult = 1.15; 
+			const densityMult = 1.8;
+			const numRosetteFibers = Math.floor(25 * densityMult);
+			const rosetteRadius = width * sizeMult; 
+
+			// Le centre de la rosette (jonction socle/bois)
+			const sNodeJoin = w2s(branchStartX, branchStartY);
+
+			// --- 1. CALCUL DE LA TENSION DE COURBURE (Basé sur les paramètres globaux) ---
+			// On utilise une valeur de base de tension (ex: 1.6) ajustée par P.curvature.
+			// Plus P.curvature est grand, plus la tension ctrlFactor sera faible, courbant la fibre.
+			const ctrlFactorBase = 1.6;
+			const ctrlFactor = ctrlFactorBase / Math.max(0.1, P.curvature * 4); 
+
+			for (let r = 0; r < numRosetteFibers; r++) {
+			    const seed = r * r + (x1 > 0 ? 7123 : 14321);
+			    
+			    // 1. DIRECTION RELATIVE : Au lieu de Math.PI * 2, on restreint l'éventail
+			    // On veut que les fibres de la rosette s'ouvrent AUTOUR de l'axe de la branche.
+			    // L'éventail fait environ 180° (Math.PI) centré sur animatedAngle.
+			    const spread = Math.PI * 1.2; 
+			    const rAngle = (animatedAngle - spread/2) + (stableRandom(seed) * spread);
+			    
+			    const rDist = (0.6 + stableRandom(seed + 1) * 0.4) * rosetteRadius;
+			    
+			    // 2. POSITION FINALE
+			    const rx = branchStartX + Math.cos(rAngle) * rDist;
+			    const ry = branchStartY + Math.sin(rAngle) * rDist;
+			    const sEdge = w2s(rx, ry);
+
+			    // 3. POINT DE CONTRÔLE (Pour la courbure réactive)
+			    // On projette le point de contrôle vers l'arrière pour donner un aspect de "base" solide
+			    const cpDist = rDist * 0.5;
+			    const cpX = branchStartX + Math.cos(animatedAngle - Math.PI) * cpDist;
+			    const cpY = branchStartY + Math.sin(animatedAngle - Math.PI) * cpDist;
+			    const sCP_Rosette = w2s(cpX, cpY);
+
+			    const rSteps = 8; 
+			    let rLastP = { x: sNodeJoin.x, y: sNodeJoin.y };
+
+			    for (let st = 1; st <= rSteps; st++) {
+			        const t = st / rSteps;
+			        // Bézier quadratique
+			        const cx = (1 - t) * (1 - t) * sNodeJoin.x + 2 * (1 - t) * t * sCP_Rosette.x + t * t * sEdge.x;
+			        const cy = (1 - t) * (1 - t) * sNodeJoin.y + 2 * (1 - t) * t * sCP_Rosette.y + t * t * sEdge.y;
+
+			        ctx.beginPath();
+			        const fadeOut = Math.max(0, 1 - t); 
+			        ctx.globalAlpha = baseAlpha * (1.2 + stableRandom(seed + 2) * 0.5) * fadeOut;
+			        ctx.lineWidth = (width * 0.12) * cam.scale;
+			        ctx.strokeStyle = rosetteCol;
+			        ctx.moveTo(rLastP.x, rLastP.y);
+			        ctx.lineTo(cx, cy);
+			        ctx.stroke();
+			        rLastP = { x: cx, y: cy };
+			    }
+			}
+
+			// Mise à jour de x1/y1 pour les fibres de la branche principale
+			x1 = branchStartX;
+			y1 = branchStartY;
+		}
+		// ===================================================================
+
+		// 4. Dessin des fibres de la branche (Ton code original stable)
+		// On recalcul sStart avec les coordonnées x1/y1 potentiellement mises à jour (tx2/ty2)
+		const sStartAnimated = w2s(x1, y1);
 		for (let i = 0; i < numFibers; i++) {
 			const sideSeed = side === 'R' ? 1000 : 2000;
 			const seed = (person ? person.name.length : 1) + i + depth + sideSeed;
@@ -153,17 +236,18 @@ const Chimere = (() => {
 			const sEnd = w2s(fX2, fY2);
 			const scp = w2s(fCpX, fCpY);
 
-			const steps = 12; 
-			let lastPoint = { x: sStart.x, y: sStart.y };
+			const steps = 12; 
+			let lastPoint = { x: sStartAnimated.x, y: sStartAnimated.y };
 			const baseLineWidth = (width * 0.8) * cam.scale;
 
 			for (let t_step = 1; t_step <= steps; t_step++) {
 				const t = t_step / steps;
-				const currX = (1 - t) * (1 - t) * sStart.x + 2 * (1 - t) * t * scp.x + t * t * sEnd.x;
-				const currY = (1 - t) * (1 - t) * sStart.y + 2 * (1 - t) * t * scp.y + t * t * sEnd.y;
+				const currX = (1 - t) * (1 - t) * sStartAnimated.x + 2 * (1 - t) * t * scp.x + t * t * sEnd.x;
+				const currY = (1 - t) * (1 - t) * sStartAnimated.y + 2 * (1 - t) * t * scp.y + t * t * sEnd.y;
 
 				ctx.beginPath();
 				ctx.lineWidth = baseLineWidth * Math.max(0.1, (1 - t * 0.9));
+				// Application de l'opacité exponentielle marquée
 				ctx.globalAlpha = baseAlpha * (0.6 + stableRandom(seed + 3) * 0.4) * (1 - t * 0.4);
 				ctx.strokeStyle = col;
 				ctx.moveTo(lastPoint.x, lastPoint.y);
@@ -174,46 +258,35 @@ const Chimere = (() => {
 		}
 		ctx.restore();
 
+		// ... (Le reste de la fonction : nœud cliquable, recursion, children) reste inchangé
 		const x2_logic = x1 + Math.cos(animatedAngle) * length;
 		const y2_logic = y1 + Math.sin(animatedAngle) * length;
 		const sNode = w2s(x2_logic, y2_logic);
 
-		// On ignore P.nodeSize pour le test et on met 10 pixels fixes
-		// Si ça marche, tu pourras remettre P.nodeSize * 2 par exemple
-		const finalRadius = Math.max(5, (P.nodeSize || 5));;
+		const finalRadius = Math.max(5, (P.nodeSize || 5));
 
-		// --- DESSIN DU NŒUD CLIQUABLE CORRIGÉ ---
 		if (known) {
-			// --- DESSIN ET COLLISION ---
 			ctx.save();
 			ctx.beginPath();
 			ctx.arc(sNode.x, sNode.y, finalRadius, 0, Math.PI * 2);
-			ctx.fillStyle = col; 
-			ctx.globalAlpha = 0.8; 
+			ctx.fillStyle = col; 
+			ctx.globalAlpha = 0.8; 
 			ctx.fill();
 			ctx.strokeStyle = "white";
 			ctx.lineWidth = 1.5;
 			ctx.stroke();
 			ctx.restore();
 
-			// 2. Enregistrement pour le CLIC
-			// IMPORTANT : On utilise les coordonnées MONDE (x2_logic) 
-			// et on définit un rayon de clic en unités MONDE cohérent
-			hits.push({ 
-				id: id, 
-				wx: x2_logic, 
-				wy: y2_logic, 
-				// On met un rayon de collision généreux (ex: 20 unités monde)
-				r: 20 
+			hits.push({ 
+				id: id, 
+				wx: x2_logic, 
+				wy: y2_logic, 
+				r: 20 
 			});
 		}
 		
-		// ENFANTS
-		if (known && person.children) {
-			drawChildrenNodes(person.children, x2_logic, y2_logic, length, width, baseAlpha, col, id);
-		}
-
-		// RÉCURSION
+		if (known && person.children) drawChildrenNodes(person.children, x2_logic, y2_logic, length, width, baseAlpha, col, id);
+		
 		if (!known || depth > 10) return;
 		const nextLen = length * P.branchDecay;
 		const nextW = width * P.widthDecay;
@@ -242,7 +315,7 @@ const Chimere = (() => {
 			const cy = py + Math.sin(angle) * cLen;
 			
 			const sStart = w2s(px, py);
-			const numChildFibers = 8;
+			const numChildFibers = 24;
 
 			ctx.save();
 			for (let j = 0; j < numChildFibers; j++) {
@@ -252,7 +325,7 @@ const Chimere = (() => {
 				const cOffY = (stableRandom(cSeed + 1) - 0.5) * (pW * 2.0);
 				const sEnd = w2s(cx + cOffX, cy + cOffY);
 
-				const steps = 8;
+				const steps = 16;
 				let lastP = { x: sStart.x, y: sStart.y };
 				const baseW = (pW * 0.4 / level) * cam.scale;
 
@@ -288,65 +361,64 @@ const Chimere = (() => {
 	}
 
 	function drawTrunk(x1, y1, x2, y2, width, col) {
-		const numFibers = 60; // Plus de fibres mais plus fines pour la densité
-		const angle = Math.atan2(y2 - y1, x2 - x1);
-		const dist = Math.sqrt((x2-x1)**2 + (y2-y1)**2);
-		const sc = cam.scale;
+	const numFibers = 40;
+	const angle = Math.atan2(y2 - y1, x2 - x1);
+	const sc = cam.scale;
 
-		ctx.save();
-		ctx.lineCap = 'round';
+	ctx.save();
+	ctx.lineCap = 'round';
 
-		for (let i = 0; i < numFibers; i++) {
-			const seed = i + (x1 > 0 ? 5000 : 10000);
+	for (let i = 0; i < numFibers; i++) {
+		const seed = i + (x1 > 0 ? 5000 : 10000);
+		
+		const wander = Math.sin(i * 0.5) * (width * 0.4); 
+		const shiftStart = ((stableRandom(seed) - 0.5) * width * 2.5) + wander;
+		const shiftEnd = (stableRandom(seed + 1) - 0.5) * width * 1.5;
+
+		const midX = (x1 + x2) * 0.5;
+		const midY = (y1 + y2) * 0.5;
+		const curveAmp = width * 1.2;
+		const cpX = midX + Math.cos(angle + Math.PI/2) * ((stableRandom(seed + 2) - 0.5) * curveAmp);
+		const cpY = midY + Math.sin(angle + Math.PI/2) * ((stableRandom(seed + 2) - 0.5) * curveAmp);
+
+		const sStart = w2s(
+			x1 + Math.cos(angle + Math.PI/2) * shiftStart,
+			y1 + Math.sin(angle + Math.PI/2) * shiftStart
+		);
+		const sEnd = w2s(
+			x2 + Math.cos(angle + Math.PI/2) * shiftEnd,
+			y2 + Math.sin(angle + Math.PI/2) * shiftEnd
+		);
+		const sCP = w2s(cpX, cpY);
+
+		const steps = 14; // Augmenté légèrement pour plus de fluidité
+		let lp = { x: sStart.x, y: sStart.y };
+		
+		for (let t_step = 1; t_step <= steps; t_step++) {
+			const t = t_step / steps; // t va de 0 à 1
+			const cx = (1 - t) * (1 - t) * sStart.x + 2 * (1 - t) * t * sCP.x + t * t * sEnd.x;
+			const cy = (1 - t) * (1 - t) * sStart.y + 2 * (1 - t) * t * sCP.y + t * t * sEnd.y;
+
+			ctx.beginPath();
 			
-			// --- L'ENTRELACEMENT ---
-			// Au lieu d'un éventail, on fait converger les fibres vers le centre par moments
-			const wander = Math.sin(i * 0.5) * (width * 0.4); 
-			const shiftStart = ((stableRandom(seed) - 0.5) * width * 3.5) + wander;
-			const shiftEnd = (stableRandom(seed + 1) - 0.5) * width * 1.5;
-
-			// Points de contrôle pour une courbe en "S" légère (plus naturel)
-			const midX = (x1 + x2) * 0.5;
-			const midY = (y1 + y2) * 0.5;
-			const curveAmp = width * 1.2;
-			const cpX = midX + Math.cos(angle + Math.PI/2) * ((stableRandom(seed + 2) - 0.5) * curveAmp);
-			const cpY = midY + Math.sin(angle + Math.PI/2) * ((stableRandom(seed + 2) - 0.5) * curveAmp);
-
-			const sStart = w2s(
-				x1 + Math.cos(angle + Math.PI/2) * shiftStart,
-				y1 + Math.sin(angle + Math.PI/2) * shiftStart
-			);
-			const sEnd = w2s(
-				x2 + Math.cos(angle + Math.PI/2) * shiftEnd,
-				y2 + Math.sin(angle + Math.PI/2) * shiftEnd
-			);
-			const sCP = w2s(cpX, cpY);
-
-			// --- LE DESSIN EN DÉGRADÉ ---
-			// On divise chaque fibre en segments pour faire varier l'alpha (fondu aux pointes)
-			const steps = 10;
-			let lp = { x: sStart.x, y: sStart.y };
+			// --- MODIFICATION ICI : ALPHA PROGRESSIF ---
+			// t = 0 (crâne) -> alpha proche de 0
+			// t = 1 (jonction bois) -> alpha maximum (1.0)
+			const rampUp = t; // Progression linéaire
+			// On multiplie par un facteur aléatoire pour garder l'aspect fibreux
+			ctx.globalAlpha = (0.1 + stableRandom(seed + 3) * 0.5) * rampUp;
 			
-			for (let t_step = 1; t_step <= steps; t_step++) {
-				const t = t_step / steps;
-				// Courbe de Bézier quadratique
-				const cx = (1 - t) * (1 - t) * sStart.x + 2 * (1 - t) * t * sCP.x + t * t * sEnd.x;
-				const cy = (1 - t) * (1 - t) * sStart.y + 2 * (1 - t) * t * sCP.y + t * t * sEnd.y;
-
-				ctx.beginPath();
-				// On diminue l'alpha aux extrémités (0 et 1) pour fondre dans le visage et les bois
-				const edgeFade = Math.sin(t * Math.PI); 
-				ctx.globalAlpha = (0.02 + stableRandom(seed + 3) * 0.15) * edgeFade;
-				ctx.lineWidth = (width * 0.08) * sc;
-				ctx.strokeStyle = col;
-				
-				ctx.moveTo(lp.x, lp.y);
-				ctx.lineTo(cx, cy);
-				ctx.stroke();
-				lp = { x: cx, y: cy };
-			}
+			// On épaissit un peu la ligne pour éviter le côté "fil de fer"
+			ctx.lineWidth = (width * 0.12) * sc; 
+			ctx.strokeStyle = col;
+			
+			ctx.moveTo(lp.x, lp.y);
+			ctx.lineTo(cx, cy);
+			ctx.stroke();
+			lp = { x: cx, y: cy };
 		}
-		ctx.restore();
+	}
+	ctx.restore();
 	}
 
 	// ══════════════════════════════════════════════════════
@@ -505,35 +577,41 @@ const Chimere = (() => {
 		const egoData = DB.people[egoId];
 
 		if (egoData) {
-			// ── Bois DROIT = lignée paternelle (Alain Vincent)
+			// Paramètres du socle osseux osseux
+			const baseTrunkLen = 30; // Longueur du petit socle
+			const baseTrunkW = P.trunkW * 1.1; // Un peu plus épais à la base
+
+			// --- CÔTÉ DROIT (Paternel) ---
 			if (egoData.fatherId) {
-				const startAngleR = -Math.PI / 2 + (P.forkSpread * 1.5); 
+				// 1. CALCULS : Nous utilisons UN SEUL angle pour le socle ET la ramure
+				const angleR = -Math.PI / 2 + (P.forkSpread * 1.5);
+				// 3. DESSIN DE LA RAMURE (La rosette y est ajoutée)
 				drawAntler(
 					egoData.fatherId,
-					attachR.x, attachR.y,
-					startAngleR,
+					attachR.x, attachR.y, // Départ depuis la fin du socle
+					angleR,  // Même angle que le socle
 					P.baseLen,
 					P.trunkW,
 					0, 'R'
 				);
 			}
 
-			// ── Bois GAUCHE = lignée maternelle (Jeanne Martin)
+			// --- CÔTÉ GAUCHE (Maternel) ---
 			if (egoData.motherId) {
-				const startAngleL = -Math.PI / 2 - (P.forkSpread * 1.5);
+				const angleL = -Math.PI / 2 - (P.forkSpread * 1.5);
 				drawAntler(
 					egoData.motherId,
 					attachL.x, attachL.y,
-					startAngleL,
+					angleL,
 					P.baseLen,
 					P.trunkW,
 					0, 'L'
 				);
 			}
-			/*
+			
 			// ── Label ego au centre
 			if (cam.scale > 0.45) {
-				const o = w2s(0, 0);
+				const o = w2s(0, 100);
 				ctx.save();
 				ctx.fillStyle   = '#e8d078';
 				ctx.font        = `italic ${Math.max(11, 13 * cam.scale)}px Georgia, serif`;
@@ -543,7 +621,7 @@ const Chimere = (() => {
 				ctx.fillText(egoData.name || 'Ego', o.x, o.y + P.faceH * cam.scale * 0.5);
 				ctx.restore();
 			}
-			*/
+			
 		}
 
 		animT += 0.01;
@@ -636,39 +714,14 @@ const Chimere = (() => {
 		window.addEventListener('resize', resize);
 
 		// Nouveaux écouteurs pour les contrôles
-		document.getElementById('slider-spread').addEventListener('input', (e) => {
-			P.forkSpread = parseFloat(e.target.value);
-		});
-
-		document.getElementById('slider-decay').addEventListener('input', (e) => {
-			P.branchDecay = parseFloat(e.target.value);
-		});
-
-		document.getElementById('color-right').addEventListener('input', (e) => {
-			P.colBoneR = e.target.value;
-		});
-
-		document.getElementById('color-left').addEventListener('input', (e) => {
-			P.colBoneL = e.target.value;
-		});
-
-		document.getElementById('slider-baselen').addEventListener('input', (e) => {
-			P.baseLen = parseFloat(e.target.value);
-		});
-
-		document.getElementById('slider-width').addEventListener('input', (e) => {
-			P.trunkW = parseFloat(e.target.value);
-		});
-		document.getElementById('slider-curvature').addEventListener('input', (e) => {
-			P.curvature = parseFloat(e.target.value);
-		});
-
-		document.getElementById('slider-nodesize').addEventListener('input', (e) => {
-			P.nodeSizeMult = parseFloat(e.target.value);
-		});
-		document.getElementById('slider-speed').addEventListener('input', (e) => {
-			P.oscSpeed = parseFloat(e.target.value);
-		});
+		document.getElementById('slider-spread').addEventListener('input', (e) => { P.forkSpread = parseFloat(e.target.value); });
+		document.getElementById('slider-decay').addEventListener('input', (e) => { P.branchDecay = parseFloat(e.target.value); });
+		document.getElementById('color-right').addEventListener('input', (e) => { P.colBoneR = e.target.value; });
+		document.getElementById('color-left').addEventListener('input', (e) => { P.colBoneL = e.target.value; });
+		document.getElementById('slider-baselen').addEventListener('input', (e) => { P.baseLen = parseFloat(e.target.value); });
+		document.getElementById('slider-width').addEventListener('input', (e) => { P.trunkW = parseFloat(e.target.value); });
+		document.getElementById('slider-curvature').addEventListener('input', (e) => { P.curvature = parseFloat(e.target.value); });
+		document.getElementById('slider-speed').addEventListener('input', (e) => { P.oscSpeed = parseFloat(e.target.value); });
 	}
 
 	// ══════════════════════════════════════════════════════
@@ -677,13 +730,10 @@ const Chimere = (() => {
 	function goToEdit() {
 		const urlParams = new URLSearchParams(window.location.search);
 		const userId = urlParams.get('u');
-		
-		if (userId) {
-			window.location.href = `edit.html?u=${userId}`;
-		} else {
-			window.location.href = `edit.html`;
-		}
+		if (userId) window.location.href = `edit.html?u=${userId}`;
+		else 		window.location.href = `edit.html`;
 	}
+
 	// Dans ton script Chimère, modifie la fonction handleImage
 	async function handleImage(input) {
 		if (input.files && input.files[0]) {
