@@ -130,223 +130,201 @@ const Chimere = (() => {
 	 * depth    : profondeur actuelle (0=tronc direct)
 	 * side     : 'R' ou 'L' (pour la couleur de base)
 	 */
-	function drawAntler(id, x1, y1, angle, length, width, depth, side) {
-		const person = (id && DB.people[id]) ? DB.people[id] : null;
-		const known = !!person;
-		const col = known ? (side === 'R' ? P.colBoneR : P.colBoneL) : P.colUnknown;
-		
-		// 1. Calcul de l'atténuation exponentielle de l'opacité (pour la profondeur)
-		const attenuationFactor = Math.pow(0.72, depth);
-		const baseAlpha = known ? (0.5 * attenuationFactor) : (0.1 * attenuationFactor);
-
-		// 2. Calcul de l'animation de balancement (sway)
-		const time = Date.now() * P.oscSpeed;
-		const sway = Math.sin(time + (depth * 0.5)) * P.oscAmp;
-		// ===================================================================
-		// --- CORRECTION DE L'ANGLE DE DÉPART (TRONC ET ROSETTE) ---
-		// ===================================================================
-		// On crée un "angle de base" très redressé pour le socle (Trunk)
-		// On multiplie P.forkSpread par 0.3 pour que le départ soit presque vertical
-		const baseAngleConstraint = (side === 'R' ? 1 : -1) * (P.forkSpread * 0.3);
-		const trunkAngle = angle + baseAngleConstraint + sway; 
-		
-		// L'angle animé pour les branches supérieures reste libre
-		const animatedAngle = angle + sway; // C'est l'angle que tout le monde doit utiliser
-
-		// 3. Dessin des piques de l'ancêtre inconnu (known=false)
-		const numFibers = known ? 50 : 10;
-		const sStart = w2s(x1, y1);
-		
-		ctx.save();
-		ctx.lineCap = 'round';
-
-		// ── Filtre de désaturation pour la profondeur (Optionnel, désactive si ça rame)
-		if (depth > 0) ctx.filter = `saturate(${Math.max(0.5, 1 - depth * 0.5)}) brightness(${Math.max(0.5, 1 - depth * 0.5)})`;
-
-		// ===================================================================
-		// --- AJOUT DU TRONC ET DE LA ROSETTE AU NIVEAU 0 ---
-		// ===================================================================
-		if (depth === 0) {
-			
-			// --- A. LE TRONC CORRIGÉ (Désormais visible et animé) ---
-			// J'utilise 30 comme longueur fixe pour qu'il soit toujours visible.
-			const baseTrunkLen = 20; // CORRECTION : Éviter d'indexer sur trunkW qui est une épaisseur
-			const baseTrunkW = width * 1.1;
-			// On calcule la fin du socle osseux osseux avec l'angle ANIMÉ
-			const tx2 = x1 + Math.cos(trunkAngle) * baseTrunkLen;
-			const ty2 = y1 + Math.sin(trunkAngle) * baseTrunkLen;
-			
-			// On appelle drawTrunk (qui dessine les fibres denses du socle)
-			// drawTrunk ne contient pas de rosette.
-			drawTrunk(x1, y1, tx2, ty2, baseTrunkW, col);
-			
-			// IMPORTANT : On décale le point de départ de la ramure pour qu'elle commence APRÈS le socle
-			// J'enlève le "- 2" et "- 4" que tu avais, qui décalaient la base.
-			const branchStartX = tx2; 
-			const branchStartY = ty2;
-
-			// --- B. LA ROSETTE CORRIGÉE (Fine, dense et lumineuse) ---
-			// On utilise la couleur spécifique pour la rosette (plus claire)
-			const rosetteCol = known ? (side === 'R' ? '#FFE8A0' : '#B8E8A8') : P.colUnknown;
-
-			// Paramètres de densité et taille (inchangés)
-			const sizeMult = 1.15;
-			const densityMult = 1.8;
-			const numRosetteFibers = Math.floor(25 * densityMult);
-			const rosetteRadius = width * sizeMult;
-
-			// Le centre de la rosette (jonction socle/bois)
-			const sNodeJoin = w2s(branchStartX, branchStartY);
-
-			// --- 1. CALCUL DE LA TENSION DE COURBURE (Basé sur les paramètres globaux) ---
-			// On utilise une valeur de base de tension (ex: 1.6) ajustée par P.curvature.
-			// Plus P.curvature est grand, plus la tension ctrlFactor sera faible, courbant la fibre.
-			const ctrlFactorBase = 1.6;
-			const ctrlFactor = ctrlFactorBase / Math.max(0.1, P.curvature * 4); 
-
-			for (let r = 0; r < numRosetteFibers; r++) {
-			    const seed = r * r + (x1 > 0 ? 7123 : 14321);
-			    
-			    // 1. DIRECTION RELATIVE : Au lieu de Math.PI * 2, on restreint l'éventail
-			    // On veut que les fibres de la rosette s'ouvrent AUTOUR de l'axe de la branche.
-			    // L'éventail fait environ 180° (Math.PI) centré sur animatedAngle.
-			    const spread = Math.PI * 1.2; 
-			    const rAngle = (animatedAngle - spread/2) + (stableRandom(seed) * spread);
-			    
-			    const rDist = (0.6 + stableRandom(seed + 1) * 0.4) * rosetteRadius;
-			    
-			    // 2. POSITION FINALE
-			    const rx = branchStartX + Math.cos(rAngle) * rDist;
-			    const ry = branchStartY + Math.sin(rAngle) * rDist;
-			    const sEdge = w2s(rx, ry);
-
-			    // 3. POINT DE CONTRÔLE (Pour la courbure réactive)
-			    // On projette le point de contrôle vers l'arrière pour donner un aspect de "base" solide
-			    const cpDist = rDist * 0.5;
-			    const cpX = branchStartX + Math.cos(animatedAngle - Math.PI) * cpDist;
-			    const cpY = branchStartY + Math.sin(animatedAngle - Math.PI) * cpDist;
-			    const sCP_Rosette = w2s(cpX, cpY);
-
-			    const rSteps = 8; 
-			    let rLastP = { x: sNodeJoin.x, y: sNodeJoin.y };
-
-			    for (let st = 1; st <= rSteps; st++) {
-			        const t = st / rSteps;
-			        // Bézier quadratique
-			        const cx = (1 - t) * (1 - t) * sNodeJoin.x + 2 * (1 - t) * t * sCP_Rosette.x + t * t * sEdge.x;
-			        const cy = (1 - t) * (1 - t) * sNodeJoin.y + 2 * (1 - t) * t * sCP_Rosette.y + t * t * sEdge.y;
-
-			        ctx.beginPath();
-			        const fadeOut = Math.max(0, 1 - t); 
-			        ctx.globalAlpha = baseAlpha * (1.2 + stableRandom(seed + 2) * 0.5) * fadeOut;
-			        ctx.lineWidth = (width * 0.12) * cam.scale;
-			        ctx.strokeStyle = rosetteCol;
-			        ctx.moveTo(rLastP.x, rLastP.y);
-			        ctx.lineTo(cx, cy);
-			        ctx.stroke();
-			        rLastP = { x: cx, y: cy };
-			    }
-			}
-
-			// Mise à jour de x1/y1 pour les fibres de la branche principale
-			x1 = branchStartX;
-			y1 = branchStartY;
-		}
-		// ===================================================================
-
-		// 4. Dessin des fibres de la branche (Ton code original stable)
-		// On recalcul sStart avec les coordonnées x1/y1 potentiellement mises à jour (tx2/ty2)
-		const sStartAnimated = w2s(x1, y1);
-		for (let i = 0; i < numFibers; i++) {
-			const sideSeed = side === 'R' ? 1000 : 2000;
-			const seed = (person ? person.name.length : 1) + i + depth + sideSeed;
-
-			const lengthVar = length * (0.8 + stableRandom(seed + 5) * 0.4);
-			const fX2_base = x1 + Math.cos(animatedAngle) * lengthVar;
-			const fY2_base = y1 + Math.sin(animatedAngle) * lengthVar;
-
-			const inversion = (depth % 2 === 0) ? -1 : 1;
-			const bendDir = (side === 'R' ? -Math.PI / 2 : Math.PI / 2) * inversion;
-
-			const randomShiftMiddle = (stableRandom(seed) - 0.5) * 15 * P.curvature;
-			const shiftFinal = (stableRandom(seed + 1) - 0.5) * width * 3.5;
-
-			const midX = x1 + Math.cos(animatedAngle) * lengthVar * 0.5;
-			const midY = y1 + Math.sin(animatedAngle) * lengthVar * 0.5;
-			
-			const fCpX = midX + Math.cos(animatedAngle + bendDir) * (lengthVar * P.curvature) + randomShiftMiddle;
-			const fCpY = midY + Math.sin(animatedAngle + bendDir) * (lengthVar * P.curvature) + randomShiftMiddle;
-			
-			const fX2 = fX2_base + Math.cos(animatedAngle + Math.PI/2) * shiftFinal;
-			const fY2 = fY2_base + Math.sin(animatedAngle + Math.PI/2) * shiftFinal;
-
-			const sEnd = w2s(fX2, fY2);
-			const scp = w2s(fCpX, fCpY);
-
-			const steps = 12; 
-			let lastPoint = { x: sStartAnimated.x, y: sStartAnimated.y };
-			const baseLineWidth = (width * 0.8) * cam.scale;
-
-			for (let t_step = 1; t_step <= steps; t_step++) {
-				const t = t_step / steps;
-				const currX = (1 - t) * (1 - t) * sStartAnimated.x + 2 * (1 - t) * t * scp.x + t * t * sEnd.x;
-				const currY = (1 - t) * (1 - t) * sStartAnimated.y + 2 * (1 - t) * t * scp.y + t * t * sEnd.y;
-
-				ctx.beginPath();
-				ctx.lineWidth = baseLineWidth * Math.max(0.1, (1 - t * 0.9));
-				// Application de l'opacité exponentielle marquée
-				ctx.globalAlpha = baseAlpha * (0.6 + stableRandom(seed + 3) * 0.4) * (1 - t * 0.4);
-				ctx.strokeStyle = col;
-				ctx.moveTo(lastPoint.x, lastPoint.y);
-				ctx.lineTo(currX, currY);
-				ctx.stroke();
-				lastPoint = { x: currX, y: currY };
-			}
-		}
-		ctx.restore();
-
-		// ... (Le reste de la fonction : nœud cliquable, recursion, children) reste inchangé
-		const x2_logic = x1 + Math.cos(animatedAngle) * length;
-		const y2_logic = y1 + Math.sin(animatedAngle) * length;
-		const sNode = w2s(x2_logic, y2_logic);
-
-		const finalRadius = Math.max(5, (P.nodeSize || 5));
-
-		if (known) {
-			ctx.save();
-			ctx.beginPath();
-			ctx.arc(sNode.x, sNode.y, finalRadius, 0, Math.PI * 2);
-			ctx.fillStyle = col; 
-			ctx.globalAlpha = 0.8; 
-			ctx.fill();
-			ctx.strokeStyle = "white";
-			ctx.lineWidth = 1.5;
-			ctx.stroke();
-			ctx.restore();
-
-			hits.push({ 
-				id: id, 
-				wx: x2_logic, 
-				wy: y2_logic, 
-				r: 20 
-			});
-		}
-		
-		if (known && person.children) drawChildrenNodes(person.children, x2_logic, y2_logic, length, width, baseAlpha, col, id);
-		
-		if (!known || depth > 10) return;
-		const nextLen = length * P.branchDecay;
-		const nextW = width * P.widthDecay;
-		if (nextLen < 5) return;
-
-		const spread = P.forkSpread * (1 + depth * 0.05);
-		const fatherAngle = side === 'R' ? animatedAngle + spread * 0.6 : animatedAngle + spread * 0.4;
-		const motherAngle = side === 'R' ? animatedAngle - spread * 0.4 : animatedAngle - spread * 0.6;
-
-		drawAntler(person.fatherId, x2_logic, y2_logic, fatherAngle, nextLen, nextW, depth + 1, side);
-		drawAntler(person.motherId, x2_logic, y2_logic, motherAngle, nextLen, nextW, depth + 1, side);
+	/**
+	 * Calcule un point le long d'une trajectoire Concave, affaissée vers le centre.
+	 */
+	function getSimpleArcPoint(t, pL, pC, pR) {
+	    // Interpolation quadratique standard (Bézier)
+	    const x = (1 - t)**2 * pL.x + 2 * (1 - t) * t * pC.x + t**2 * pR.x;
+	    const y = (1 - t)**2 * pL.y + 2 * (1 - t) * t * pC.y + t**2 * pR.y;
+	    return { x, y };
 	}
 
+	function drawAntler(id, x1, y1, angle, length, width, depth, side) {
+	    const person = (id && DB.people[id]) ? DB.people[id] : null;
+	    const known = !!person;
+	    const col = known ? (side === 'R' ? P.colBoneR : P.colBoneL) : P.colUnknown;
+	    
+	    const attenuationFactor = Math.pow(0.72, depth);
+	    const baseAlpha = known ? (0.5 * attenuationFactor) : (0.1 * attenuationFactor);
+	    const time = Date.now() * P.oscSpeed;
+	    const sway = Math.sin(time + (depth * 0.5)) * P.oscAmp;
+
+	    const baseAngleConstraint = (side === 'R' ? 1 : -1) * (P.forkSpread * 0.3);
+	    const trunkAngle = angle + baseAngleConstraint + sway; 
+	    const animatedAngle = angle + sway;
+
+	    ctx.save();
+	    ctx.lineCap = 'round';
+	    if (depth > 0) ctx.filter = `saturate(${Math.max(0.5, 1 - depth * 0.5)}) brightness(${Math.max(0.5, 1 - depth * 0.5)})`;
+
+	    // ===================================================================
+	    // --- 1. TRONC ET ROSETTE (NIVEAU 0) ---
+	    // ===================================================================
+	    if (depth === 0) {
+	        const baseTrunkLen = 20;
+	        const baseTrunkW = width * 1.1;
+	        const tx2 = x1 + Math.cos(trunkAngle) * baseTrunkLen;
+	        const ty2 = y1 + Math.sin(trunkAngle) * baseTrunkLen;
+	        
+	        if (typeof drawTrunk === "function") drawTrunk(x1, y1, tx2, ty2, baseTrunkW, col);
+	        
+	        const rosetteCol = known ? (side === 'R' ? '#FFE8A0' : '#B8E8A8') : P.colUnknown;
+	        const rosetteRadius = width * 1.15;
+	        const numRosetteFibers = Math.floor(25 * 1.8);
+
+	        for (let r = 0; r < numRosetteFibers; r++) {
+	            const seed = r * r + (x1 > 0 ? 7123 : 14321);
+	            const rSpread = Math.PI * 1.2; 
+	            const rAngle = (animatedAngle - rSpread/2) + (stableRandom(seed) * rSpread);
+	            const rDist = (0.6 + stableRandom(seed + 1) * 0.4) * rosetteRadius;
+	            const rx = tx2 + Math.cos(rAngle) * rDist;
+	            const ry = ty2 + Math.sin(rAngle) * rDist;
+	            const sNodeJoin = w2s(tx2, ty2);
+	            const sEdge = w2s(rx, ry);
+	            const cpX = tx2 + Math.cos(animatedAngle - Math.PI) * (rDist * 0.5);
+	            const cpY = ty2 + Math.sin(animatedAngle - Math.PI) * (rDist * 0.5);
+	            const sCP_Rosette = w2s(cpX, cpY);
+
+	            let rLastP = { x: sNodeJoin.x, y: sNodeJoin.y };
+	            for (let st = 1; st <= 8; st++) {
+	                const t = st / 8;
+	                const cx = (1-t)**2 * sNodeJoin.x + 2*(1-t)*t * sCP_Rosette.x + t**2 * sEdge.x;
+	                const cy = (1-t)**2 * sNodeJoin.y + 2*(1-t)*t * sCP_Rosette.y + t**2 * sEdge.y;
+	                ctx.beginPath();
+	                ctx.globalAlpha = baseAlpha * (1.2 + stableRandom(seed+2)*0.5) * (1-t);
+	                ctx.lineWidth = (width * 0.12) * cam.scale;
+	                ctx.strokeStyle = rosetteCol;
+	                ctx.moveTo(rLastP.x, rLastP.y); ctx.lineTo(cx, cy); ctx.stroke();
+	                rLastP = { x: cx, y: cy };
+	            }
+	        }
+	        x1 = tx2; y1 = ty2;
+	    }
+
+	    // ===================================================================
+	    // --- 2. FIBRES DE LA BRANCHE PRINCIPALE ---
+	    // ===================================================================
+	    const sStartAnimated = w2s(x1, y1);
+	    const numFibers = known ? 50 : 10;
+	    for (let i = 0; i < numFibers; i++) {
+	        const sideSeed = side === 'R' ? 1000 : 2000;
+	        const seed = (person ? person.id.length : 1) + i + depth + sideSeed;
+	        const lengthVar = length * (0.8 + stableRandom(seed + 5) * 0.4);
+	        const fX2_base = x1 + Math.cos(animatedAngle) * lengthVar;
+	        const fY2_base = y1 + Math.sin(animatedAngle) * lengthVar;
+	        const inversion = (depth % 2 === 0) ? -1 : 1;
+	        const bendDir = (side === 'R' ? -Math.PI / 2 : Math.PI / 2) * inversion;
+	        const midX = x1 + Math.cos(animatedAngle) * lengthVar * 0.5;
+	        const midY = y1 + Math.sin(animatedAngle) * lengthVar * 0.5;
+	        const fCpX = midX + Math.cos(animatedAngle + bendDir) * (lengthVar * P.curvature) + (stableRandom(seed)-0.5)*15*P.curvature;
+	        const fCpY = midY + Math.sin(animatedAngle + bendDir) * (lengthVar * P.curvature) + (stableRandom(seed)-0.5)*15*P.curvature;
+	        const shiftFinal = (stableRandom(seed + 1) - 0.5) * width * 3.5;
+	        const fX2 = fX2_base + Math.cos(animatedAngle + Math.PI/2) * shiftFinal;
+	        const fY2 = fY2_base + Math.sin(animatedAngle + Math.PI/2) * shiftFinal;
+
+	        const sEnd = w2s(fX2, fY2);
+	        const scp = w2s(fCpX, fCpY);
+	        let lastPoint = { x: sStartAnimated.x, y: sStartAnimated.y };
+	        for (let t_step = 1; t_step <= 12; t_step++) {
+	            const t = t_step / 12;
+	            const currX = (1-t)**2 * sStartAnimated.x + 2*(1-t)*t * scp.x + t**2 * sEnd.x;
+	            const currY = (1-t)**2 * sStartAnimated.y + 2*(1-t)*t * scp.y + t**2 * sEnd.y;
+	            ctx.beginPath();
+	            ctx.lineWidth = (width * 0.8) * cam.scale * Math.max(0.1, (1 - t * 0.9));
+	            ctx.globalAlpha = baseAlpha * (0.6 + stableRandom(seed + 3) * 0.4) * (1 - t * 0.4);
+	            ctx.strokeStyle = col;
+	            ctx.moveTo(lastPoint.x, lastPoint.y); ctx.lineTo(currX, currY); ctx.stroke();
+	            lastPoint = { x: currX, y: currY };
+	        }
+	    }
+	    ctx.restore();
+
+	    // ===================================================================
+	    // --- 3. LE PALIER DE LA FRATRIE (CONCAVE & EFFILOCHÉ) ---
+	    // ===================================================================
+	    const x2_logic = x1 + Math.cos(animatedAngle) * length;
+	    const y2_logic = y1 + Math.sin(animatedAngle) * length;
+	    let recursionX = x2_logic;
+	    let recursionY = y2_logic;
+
+	    if (known) {
+	        const father = DB.people[person.fatherId];
+	        const siblingsIds = (father && father.children) ? father.children : [person.id];
+	        const sibSpacing = 35 * cam.scale;
+	        const mainIdx = siblingsIds.indexOf(id);
+	        const rackWidth = (siblingsIds.length - 1) * sibSpacing;
+	        
+	        const startX = x2_logic - (mainIdx * sibSpacing) / cam.scale;
+	        const endX = startX + rackWidth / cam.scale;
+	        
+	        recursionX = startX + (rackWidth / 2) / cam.scale;
+	        
+	        // --- COURBURE LÉGÈRE ---
+	        // On baisse très légèrement le point central pour créer l'arc
+	        const lightCurveOffset = 4 / cam.scale; 
+	        const pC = { x: recursionX, y: y2_logic + lightCurveOffset };
+	        const pL = { x: startX, y: y2_logic };
+	        const pR = { x: endX, y: y2_logic };
+
+	        // --- 1. TRAIT DU RÂTEAU (FIN ET UNIQUE) ---
+	        if (siblingsIds.length > 1) {
+	            ctx.beginPath();
+	            ctx.lineWidth = (width * 0.15) * cam.scale; // Trait fin
+	            ctx.strokeStyle = col;
+	            ctx.globalAlpha = baseAlpha * 0.8;
+
+	            let pPrev = w2s(pL.x, pL.y);
+	            for (let s = 1; s <= 10; s++) {
+	                const t = s / 10;
+	                const pLogic = getSimpleArcPoint(t, pL, pC, pR);
+	                const sPos = w2s(pLogic.x, pLogic.y);
+	                ctx.moveTo(pPrev.x, pPrev.y);
+	                ctx.lineTo(sPos.x, sPos.y);
+	                pPrev = sPos;
+	            }
+	            ctx.stroke();
+	        }
+
+	        // --- 2. NOEUDS (Alignés sur l'arc) ---
+	        siblingsIds.forEach((sid, idx) => {
+	            const tNode = idx / (siblingsIds.length - 1 || 1);
+	            const pNodeBase = getSimpleArcPoint(tNode, pL, pC, pR);
+	            const sNodeBottom = w2s(pNodeBase.x, pNodeBase.y);
+	            const sNodeTop = { x: sNodeBottom.x, y: sNodeBottom.y + 12 * cam.scale };
+
+	            // Petite tige verticale simple
+	            ctx.beginPath();
+	            ctx.lineWidth = 1 * cam.scale;
+	            ctx.globalAlpha = baseAlpha * 0.5;
+	            ctx.moveTo(sNodeBottom.x, sNodeBottom.y);
+	            ctx.lineTo(sNodeTop.x, sNodeTop.y);
+	            ctx.stroke();
+
+	            // Cercle du nœud
+	            ctx.beginPath();
+	            ctx.arc(sNodeTop.x, sNodeTop.y, Math.max(4, P.nodeSize || 4), 0, Math.PI * 2);
+	            ctx.fillStyle = (sid === id) ? col : "#FFF";
+	            ctx.fill();
+	            ctx.stroke();
+
+	            hits.push({ id: sid, wx: pNodeBase.x, wy: pNodeBase.y + 12 / cam.scale, r: 15 });
+	        });
+
+	        recursionY = y2_logic + lightCurveOffset;
+	    }
+
+	    // ===================================================================
+	    // --- 4. RÉCURSION ---
+	    // ===================================================================
+	    if (!known || depth > 10) return;
+	    const nextLen = length * P.branchDecay;
+	    const nextW = width * P.widthDecay;
+	    if (nextLen < 5) return;
+	    const spread = P.forkSpread * (1 + depth * 0.05);
+	    drawAntler(person.fatherId, recursionX, recursionY, animatedAngle + spread * 0.5, nextLen, nextW, depth + 1, side);
+	    drawAntler(person.motherId, recursionX, recursionY, animatedAngle - spread * 0.5, nextLen, nextW, depth + 1, side);
+	}
 	/**
 	 * Fonction helper pour dessiner les enfants et leurs propres descendants
 	 * sous forme de pics vers le bas.
@@ -406,6 +384,96 @@ const Chimere = (() => {
 			}
 		});
 	}
+
+	function drawSiblingsAndouillers(siblingsIds, px, py, angle, length, width, baseAlpha, col) {
+	    if (!siblingsIds || siblingsIds.length === 0) return;
+
+	    const numSiblings = siblingsIds.length;
+	    // On espace les andouillers le long de la branche parente
+	    const stepLength = length / (numSiblings + 1); 
+	    const andouillerLength = 15; // Longueur de la pointe (le frère/sœur)
+	    const andouillerWidth = width * 0.4;
+
+	    siblingsIds.forEach((siblingId, index) => {
+	        // Position le long de la branche
+	        const distAlong = stepLength * (index + 1);
+	        const attachX = px + Math.cos(angle) * distAlong;
+	        const attachY = py + Math.sin(angle) * distAlong;
+
+	        // Angle perpendiculaire à la branche pour la pointe
+	        // On alterne gauche/droite pour l'esthétique
+	        const sideAngle = (index % 2 === 0) ? angle - Math.PI/2 : angle + Math.PI/2;
+	        
+	        const endX = attachX + Math.cos(sideAngle) * andouillerLength;
+	        const endY = attachY + Math.sin(sideAngle) * andouillerLength;
+
+	        // 1. Dessin de l'andouiller (fibres fines)
+	        ctx.beginPath();
+	        ctx.lineWidth = andouillerWidth * cam.scale;
+	        ctx.strokeStyle = col;
+	        ctx.globalAlpha = baseAlpha * 0.7; // Un peu plus discret
+	        ctx.moveTo(w2s(attachX, attachY).x, w2s(attachX, attachY).y);
+	        ctx.lineTo(w2s(endX, endY).x, w2s(endX, endY).y);
+	        ctx.stroke();
+
+	        // 2. Le point final de la fratrie
+	        const radius = 3 * cam.scale;
+	        ctx.beginPath();
+	        ctx.arc(w2s(endX, endY).x, w2s(endX, endY).y, radius, 0, Math.PI * 2);
+	        ctx.fillStyle = col;
+	        ctx.fill();
+
+	        // Zone de clic pour le frère/sœur
+	        hits.push({ id: siblingId, wx: endX, wy: endY, r: 15 });
+	    });
+	}
+
+	function drawSiblingsRack(person, px, py, width, col, baseAlpha) {
+    // On récupère tous les enfants des parents de 'person' pour avoir la fratrie complète
+    const father = DB.people[person.fatherId];
+    const siblingsIds = father ? father.children : [person.id]; 
+    
+    const num = siblingsIds.length;
+    const spacing = 40; // Espace entre frères/sœurs
+    const rackW = (num - 1) * spacing;
+    const startX = px - rackW / 2;
+    const rackY = py - 20; // Hauteur du palier
+
+    // 1. Barre horizontale
+    ctx.beginPath();
+    ctx.lineWidth = (width * 0.5) * cam.scale;
+    ctx.strokeStyle = col;
+    ctx.globalAlpha = baseAlpha;
+    const sLeft = w2s(startX, rackY);
+    const sRight = w2s(startX + rackW, rackY);
+    ctx.moveTo(sLeft.x, sLeft.y);
+    ctx.lineTo(sRight.x, sRight.y);
+    ctx.stroke();
+
+    // 2. Tiges verticales et nœuds pour chaque membre
+    siblingsIds.forEach((sid, i) => {
+        const x = startX + i * spacing;
+        const sBottom = w2s(x, rackY);
+        const sTop = w2s(x, rackY - 10);
+
+        ctx.beginPath();
+        ctx.lineWidth = (width * 0.3) * cam.scale;
+        ctx.moveTo(sBottom.x, sBottom.y);
+        ctx.lineTo(sTop.x, sTop.y);
+        ctx.stroke();
+
+        // Nœud de la personne (cercle)
+        ctx.beginPath();
+        ctx.arc(sTop.x, sTop.y, 5 * cam.scale, 0, Math.PI * 2);
+        ctx.fillStyle = (sid === person.id) ? col : "#FFF"; // On surligne l'ancêtre direct
+        ctx.fill();
+        ctx.stroke();
+
+        hits.push({ id: sid, wx: x, wy: rackY - 10, r: 15 });
+    });
+
+    return { centerX: px, centerY: rackY }; // On repart du milieu du râteau pour les parents
+}
 
 	function drawTrunk(x1, y1, x2, y2, width, col) {
 	const numFibers = 40;
@@ -899,7 +967,7 @@ const Chimere = (() => {
 		if (input.files && input.files[0]) {
 			const file = input.files[0];
 			const urlParams = new URLSearchParams(window.location.search);
-			const userId = urlParams.get('u') || "matthieu_v";
+			const userId = urlParams.get('u');
 
 			// 1. Affichage immédiat pour l'utilisateur (Local)
 			const reader = new FileReader();
@@ -941,76 +1009,90 @@ const Chimere = (() => {
 
 	function loop() { render(); requestAnimationFrame(loop); }
 	async function init() {
-		// 1. On identifie l'utilisateur dans l'URL
-		const urlParams = new URLSearchParams(window.location.search);
-		const userId = urlParams.get('u');
-		const btnEdit = document.getElementById('btn-edit');
-		// 2. STRATÉGIE DE CHARGEMENT
-		if (userId) {
-			console.log("Tentative de chargement Cloud pour :", userId);
-			const cloudData = await db_load(userId);
-			
-			if (cloudData) {
-				DB = cloudData;
-				isDataLoaded = true;
-				console.log("Données Cloud chargées.");
+	    const urlParams = new URLSearchParams(window.location.search);
+	    // On utilise UNE SEULE variable cohérente pour toute la fonction
+	    let userId = urlParams.get('u'); 
+	    const btnEdit = document.getElementById('btn-edit');
 
-				const ego = DB.people[DB.ego];
-    
-		    // --- Restauration des réglages des bois ---
-		    if (ego.treeSettings) {
-		        // On fusionne les réglages sauvegardés dans l'objet P actuel
-		        Object.assign(P, ego.treeSettings);
-		        
-		        // Mise à jour visuelle des sliders pour qu'ils affichent les bonnes valeurs
-		        document.getElementById('slider-spread').value = P.forkSpread;
-		        document.getElementById('slider-decay').value = P.branchDecay;
-		        document.getElementById('slider-baselen').value = P.baseLen;
-		        document.getElementById('slider-width').value = P.trunkW;
-		        document.getElementById('slider-curvature').value = P.curvature;
-		        document.getElementById('slider-speed').value = P.oscSpeed;
-		        document.getElementById('color-right').value = P.colBoneR;
-		        document.getElementById('color-left').value = P.colBoneL;
-		    }
+	    if (userId) {
+	        console.log("Tentative de chargement Cloud pour :", userId);
+	        const cloudData = await db_load(userId);
+	        
+	        if (cloudData) {
+	            DB = cloudData;
+	            isDataLoaded = true;
+	            console.log("Données Cloud chargées.");
 
-				// --- PARTIE 4 : CHARGEMENT DE LA PHOTO ENREGISTRÉE ---
-				// On vérifie si l'ego a une photoUrl dans le JSON
-				if (ego && ego.photoUrl) {
-					const img = new Image();
-					img.crossOrigin = "anonymous"; // Évite les erreurs de sécurité (CORS) sur le Canvas
-					img.onload = () => { 
-						userImage = img; 
-						console.log("Photo de l'Ego chargée avec succès.");
-					};
-					img.src = ego.photoUrl;
-				}
-				if (ego.imgSettings) imgTransform = ego.imgSettings;
-				
+	            const ego = DB.people[DB.ego];
+	            
+	            // --- Restauration des réglages des bois ---
+	            if (ego && ego.treeSettings) {
+	                Object.assign(P, ego.treeSettings);
+	                
+	                // Mise à jour visuelle des sliders
+	                if(document.getElementById('slider-spread')) document.getElementById('slider-spread').value = P.forkSpread;
+	                if(document.getElementById('slider-decay')) document.getElementById('slider-decay').value = P.branchDecay;
+	                if(document.getElementById('slider-baselen')) document.getElementById('slider-baselen').value = P.baseLen;
+	                if(document.getElementById('slider-width')) document.getElementById('slider-width').value = P.trunkW;
+	                if(document.getElementById('slider-curvature')) document.getElementById('slider-curvature').value = P.curvature;
+	                if(document.getElementById('slider-speed')) document.getElementById('slider-speed').value = P.oscSpeed;
+	                if(document.getElementById('color-right')) document.getElementById('color-right').value = P.colBoneR;
+	                if(document.getElementById('color-left')) document.getElementById('color-left').value = P.colBoneL;
+	            }
 
-			} else {
-				console.warn("Utilisateur inconnu dans le Cloud, chargement du local par défaut.");
-				await loadData('./datatrees/genealogie.json');
-			}
-			if (btnEdit) btnEdit.innerHTML = "✎ Modifier mon arbre";
+	            // --- CHARGEMENT DE LA PHOTO ---
+	            if (ego && ego.photoUrl) {
+	                const img = new Image();
+	                img.crossOrigin = "anonymous";
+	                img.onload = () => { userImage = img; };
+	                img.src = ego.photoUrl;
+	            }
+	            if (ego && ego.imgSettings) imgTransform = ego.imgSettings;
 
-		} else {
-			if (btnEdit) btnEdit.innerHTML = "✨ Créer mon arbre";
-			await loadData('./datatrees/genealogie.json');
-			//applyRandomTheme();
-		}
+	        } else {
+	            console.warn("Utilisateur inconnu, chargement du local.");
+	            await loadData('./datatrees/genealogie.json');
+	        }
+	        if (btnEdit) btnEdit.innerHTML = "✎ Modifier mon arbre";
 
-		// 3. Initialisation classique du Canvas
-		canvas = document.getElementById('c');
-		if (!canvas) {
-			console.error("Canvas introuvable !");
-			return;
-		}
-		ctx = canvas.getContext('2d');
-		resize();
-		resetView();
-		bindEvents();
-		// 4. Lancement de la boucle
-		requestAnimationFrame(loop);
+	    } else {
+	        // --- CAS CHIMÈRE ---
+	        const randomNumber = Math.floor(1000 + Math.random() * 9000);
+	        userId = `chimere-${randomNumber}`; // On remplit userId ici aussi
+
+	        urlParams.set('u', userId);
+	        const newUrl = `${window.location.pathname}?${urlParams.toString()}`;
+	        window.history.replaceState({}, '', newUrl);
+	        
+	        console.log("Nouvelle entité générée :", userId);
+
+	        if (btnEdit) btnEdit.innerHTML = "✨ Créer mon arbre";
+	        await loadData('./datatrees/genealogie.json');
+	    }
+
+	    // --- SÉCURITÉ : On s'assure que l'ID existe dans DB.people ---
+	    // On utilise userId qui est maintenant défini dans tous les cas
+	    if (DB && DB.people && !DB.people[userId]) {
+	        DB.people[userId] = {
+	            id: userId,
+	            name: userId.charAt(0).toUpperCase() + userId.slice(1),
+	            fatherId: null,
+	            motherId: null,
+	            children: []
+	        };
+	        // Si c'est une nouvelle chimère, on définit souvent cet ID comme l'ego (racine)
+	        if (!DB.ego) DB.ego = userId; 
+	    }
+
+	    // --- INITIALISATION CANVAS ---
+	    canvas = document.getElementById('c');
+	    if (!canvas) return;
+	    ctx = canvas.getContext('2d');
+	    
+	    resize();
+	    resetView();
+	    bindEvents();
+	    requestAnimationFrame(loop);
 	}
 
 	return { init, handleImage, resetView, exportPNG, goToEdit, addPerson, rebuild, get DB() { return DB; }, cam, P };
