@@ -15,9 +15,8 @@ async function db_save(nomUtilisateur, treeData) {
     if (error) {
         console.error("Erreur Supabase:", error);
         alert("Erreur lors de la sauvegarde.");
-    } else {
-        alert("Sauvegardé sur le Cloud !");
-    }
+    } else alert("Sauvegardé sur le Cloud !");
+    
 }
 
 // Fonction pour CHARGER

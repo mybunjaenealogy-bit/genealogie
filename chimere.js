@@ -20,18 +20,34 @@ const Chimere = (() => {
 		trunkW:    9,     // épaisseur du tronc
 		branchDecay: 0.68, //0.82, // facteur de réduction longueur par génération
 		widthDecay:  0.62, //0.75, // facteur de réduction épaisseur par génération
-		baseLen:   100,   // longueur du 1er segment du bois
+		baseLen:   50,   // longueur du 1er segment du bois
 		// Angles de base : bois droit part vers la droite-haut, gauche vers gauche-haut
 		forkSpread:  0.68,  // demi-angle de fourche à chaque bifurcation
 		// Couleurs
 		colFaceStroke: '#5a3a18',
-		colBoneR:   '#c8a848',  // bois paternel (doré chaud)
-		colBoneL:   '#88b878',  // bois maternel (vert doux)
+		colBoneR:   '#ffffff',  // bois paternel
+		colBoneL:   '#ffffff',  // bois maternel
 		colUnknown: '#3a3a28',  // ancêtre inconnu / manquant
 		curvature: 0.2,     // Facteur de courbure (0 = droit, 0.5 = très courbé)
 		oscSpeed: 0.002, // Vitesse de la respiration
 		oscAmp: 0.03     // Amplitude du mouvement
 	};
+	const ANTLER_THEMES = [
+    { name: "doré vert", 									left: "#c8a848", right: "#88b878" }, // Brun / Beige
+    { name: "Classique", 									left: "#8b5a2b", right: "#a0785a" }, // Brun / Beige
+    { name: "Forêt Noir", 								left: "#1a2a1a", right: "#4a5d23" }, // Vert sombre / Mousse
+    { name: "Os et Cendre", 							left: "#d2d2c0", right: "#555555" }, // Ivoire / Gris
+    { name: "Aurore", 										left: "#2e4a85", right: "#7b4a8d" }, // Bleu nuit / Violet
+    { name: "Feu ancestral", 							left: "#8b0000", right: "#ff8c00" }, // Rouge sang / Orange
+    { name: "Glace", 											left: "#a5f2f3", right: "#ffffff" }, // Cyan clair / Blanc
+    { name: "icyblue gunMetal", 					left: "#a4d8ff", right: "#35393c" },
+    { name: "raspRed deepSpaceBlue", 			left: "#ee005a", right: "#012641" },
+    { name: "shadGrey sandClay", 					left: "#272727", right: "#d4aa7d" },
+    { name: "elecRose chartreuse", 				left: "#fe00ae", right: "#c1fe1a" },
+    { name: "limeCream vintGrape", 				left: "#ddea78", right: "#433455" },
+    { name: "celadon chocoPlum", 					left: "#a8d3a8", right: "#553832" },
+    { name: "cherryBlossom deepTwilight", left: "#f9a8bb", right: "#1a1265" }
+];
 
 	// ÉTAT RUNTIME
 	let canvas, ctx, W, H;
@@ -82,6 +98,22 @@ const Chimere = (() => {
 		);
 	}
 
+	function applyRandomTheme() {
+    // 1. Choisir un index au hasard
+    const theme = ANTLER_THEMES[Math.floor(Math.random() * ANTLER_THEMES.length)];
+    
+    // 2. Appliquer aux paramètres de rendu
+    P.colBoneL = theme.left;
+    P.colBoneR = theme.right;
+
+    // 3. Mettre à jour les sliders/inputs visuels (si présents dans le DOM)
+    const inputL = document.getElementById('color-left');
+    const inputR = document.getElementById('color-right');
+    if (inputL) inputL.value = theme.left;
+    if (inputR) inputR.value = theme.right;
+
+    console.log(`Thème appliqué : ${theme.name}`);
+	}
 
 	// Génère un nombre "pseudo-aléatoire" stable
 	const stableRandom = (s) => {
@@ -110,6 +142,15 @@ const Chimere = (() => {
 		// 2. Calcul de l'animation de balancement (sway)
 		const time = Date.now() * P.oscSpeed;
 		const sway = Math.sin(time + (depth * 0.5)) * P.oscAmp;
+		// ===================================================================
+		// --- CORRECTION DE L'ANGLE DE DÉPART (TRONC ET ROSETTE) ---
+		// ===================================================================
+		// On crée un "angle de base" très redressé pour le socle (Trunk)
+		// On multiplie P.forkSpread par 0.3 pour que le départ soit presque vertical
+		const baseAngleConstraint = (side === 'R' ? 1 : -1) * (P.forkSpread * 0.3);
+		const trunkAngle = angle + baseAngleConstraint + sway; 
+		
+		// L'angle animé pour les branches supérieures reste libre
 		const animatedAngle = angle + sway; // C'est l'angle que tout le monde doit utiliser
 
 		// 3. Dessin des piques de l'ancêtre inconnu (known=false)
@@ -132,8 +173,8 @@ const Chimere = (() => {
 			const baseTrunkLen = 20; // CORRECTION : Éviter d'indexer sur trunkW qui est une épaisseur
 			const baseTrunkW = width * 1.1;
 			// On calcule la fin du socle osseux osseux avec l'angle ANIMÉ
-			const tx2 = x1 + Math.cos(animatedAngle) * baseTrunkLen;
-			const ty2 = y1 + Math.sin(animatedAngle) * baseTrunkLen;
+			const tx2 = x1 + Math.cos(trunkAngle) * baseTrunkLen;
+			const ty2 = y1 + Math.sin(trunkAngle) * baseTrunkLen;
 			
 			// On appelle drawTrunk (qui dessine les fibres denses du socle)
 			// drawTrunk ne contient pas de rosette.
@@ -149,10 +190,10 @@ const Chimere = (() => {
 			const rosetteCol = known ? (side === 'R' ? '#FFE8A0' : '#B8E8A8') : P.colUnknown;
 
 			// Paramètres de densité et taille (inchangés)
-			const sizeMult = 1.15; 
+			const sizeMult = 1.15;
 			const densityMult = 1.8;
 			const numRosetteFibers = Math.floor(25 * densityMult);
-			const rosetteRadius = width * sizeMult; 
+			const rosetteRadius = width * sizeMult;
 
 			// Le centre de la rosette (jonction socle/bois)
 			const sNodeJoin = w2s(branchStartX, branchStartY);
@@ -594,29 +635,15 @@ const Chimere = (() => {
 			// --- CÔTÉ DROIT (Paternel) ---
 			if (egoData.fatherId) {
 				// 1. CALCULS : Nous utilisons UN SEUL angle pour le socle ET la ramure
-				const angleR = -Math.PI / 2 + (P.forkSpread * 1.5);
+				const angleR = -Math.PI / 2 + (P.forkSpread * 0.5);
 				// 3. DESSIN DE LA RAMURE (La rosette y est ajoutée)
-				drawAntler(
-					egoData.fatherId,
-					attachR.x, attachR.y, // Départ depuis la fin du socle
-					angleR,  // Même angle que le socle
-					P.baseLen,
-					P.trunkW,
-					0, 'R'
-				);
+				drawAntler(egoData.fatherId, attachR.x, attachR.y, angleR, P.baseLen * P.branchDecay, P.trunkW, 0, 'R');
 			}
 
 			// --- CÔTÉ GAUCHE (Maternel) ---
 			if (egoData.motherId) {
-				const angleL = -Math.PI / 2 - (P.forkSpread * 1.5);
-				drawAntler(
-					egoData.motherId,
-					attachL.x, attachL.y,
-					angleL,
-					P.baseLen,
-					P.trunkW,
-					0, 'L'
-				);
+				const angleL = -Math.PI / 2 - (P.forkSpread * 0.5);
+				drawAntler(egoData.motherId, attachL.x, attachL.y, angleL, P.baseLen * P.branchDecay, P.trunkW, 0, 'L');
 			}
 			
 			// ── Label ego au centre
@@ -803,6 +830,8 @@ const Chimere = (() => {
 		document.getElementById('slider-width').addEventListener('input', (e) => { P.trunkW = parseFloat(e.target.value); });
 		document.getElementById('slider-curvature').addEventListener('input', (e) => { P.curvature = parseFloat(e.target.value); });
 		document.getElementById('slider-speed').addEventListener('input', (e) => { P.oscSpeed = parseFloat(e.target.value); });
+		document.getElementById('btn-random-theme').addEventListener('click', () => { applyRandomTheme(); });
+		document.getElementById('btn-save-all').addEventListener('click', saveFullTree);
 	}
 
 	// ══════════════════════════════════════════════════════
@@ -824,6 +853,39 @@ const Chimere = (() => {
 	            console.error("Erreur lors de la sauvegarde auto :", err);
 	        }
 	    }
+	}
+	async function saveFullTree() {
+    const urlParams = new URLSearchParams(window.location.search);
+    const userId = urlParams.get('u');
+
+    if (!userId) {
+        alert("Identifiant utilisateur introuvable. Impossible de sauvegarder.");
+        return;
+    }
+
+    // 1. On injecte les paramètres actuels des bois dans le JSON
+    // On crée une copie propre de P pour éviter les références circulaires
+    DB.people[DB.ego].treeSettings = { ...P };
+    
+    // 2. On s'assure que les derniers réglages de la photo sont aussi là
+    DB.people[DB.ego].imgSettings = { ...imgTransform };
+
+    // 3. Envoi massif à Supabase
+    try {
+        const btn = document.getElementById('btn-save-all');
+        if(btn) btn.innerHTML = "⌛ Sauvegarde...";
+        
+        await db_save(userId, DB);
+        
+        console.log("Arbre et photo sauvegardés avec succès !");
+        if(btn) {
+            btn.innerHTML = "✅ Sauvegardé !";
+            setTimeout(() => btn.innerHTML = "💾 Sauvegarder mon Arbre", 2000);
+        }
+    } catch (err) {
+        console.error("Erreur de sauvegarde :", err);
+        alert("Erreur lors de la communication avec le cloud.");
+    }
 	}
 	function goToEdit() {
 		const urlParams = new URLSearchParams(window.location.search);
@@ -893,18 +955,36 @@ const Chimere = (() => {
 				isDataLoaded = true;
 				console.log("Données Cloud chargées.");
 
+				const ego = DB.people[DB.ego];
+    
+		    // --- Restauration des réglages des bois ---
+		    if (ego.treeSettings) {
+		        // On fusionne les réglages sauvegardés dans l'objet P actuel
+		        Object.assign(P, ego.treeSettings);
+		        
+		        // Mise à jour visuelle des sliders pour qu'ils affichent les bonnes valeurs
+		        document.getElementById('slider-spread').value = P.forkSpread;
+		        document.getElementById('slider-decay').value = P.branchDecay;
+		        document.getElementById('slider-baselen').value = P.baseLen;
+		        document.getElementById('slider-width').value = P.trunkW;
+		        document.getElementById('slider-curvature').value = P.curvature;
+		        document.getElementById('slider-speed').value = P.oscSpeed;
+		        document.getElementById('color-right').value = P.colBoneR;
+		        document.getElementById('color-left').value = P.colBoneL;
+		    }
+
 				// --- PARTIE 4 : CHARGEMENT DE LA PHOTO ENREGISTRÉE ---
 				// On vérifie si l'ego a une photoUrl dans le JSON
-				if (DB.people[DB.ego] && DB.people[DB.ego].photoUrl) {
+				if (ego && ego.photoUrl) {
 					const img = new Image();
 					img.crossOrigin = "anonymous"; // Évite les erreurs de sécurité (CORS) sur le Canvas
 					img.onload = () => { 
 						userImage = img; 
 						console.log("Photo de l'Ego chargée avec succès.");
 					};
-					img.src = DB.people[DB.ego].photoUrl;
+					img.src = ego.photoUrl;
 				}
-				if (DB.people[DB.ego].imgSettings) imgTransform = DB.people[DB.ego].imgSettings;
+				if (ego.imgSettings) imgTransform = ego.imgSettings;
 				
 
 			} else {
@@ -916,6 +996,7 @@ const Chimere = (() => {
 		} else {
 			if (btnEdit) btnEdit.innerHTML = "✨ Créer mon arbre";
 			await loadData('./datatrees/genealogie.json');
+			//applyRandomTheme();
 		}
 
 		// 3. Initialisation classique du Canvas
@@ -928,7 +1009,6 @@ const Chimere = (() => {
 		resize();
 		resetView();
 		bindEvents();
-
 		// 4. Lancement de la boucle
 		requestAnimationFrame(loop);
 	}

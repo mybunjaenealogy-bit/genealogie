@@ -1,0 +1,37 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Yggdrasil - Arbre Généalogique Artistique</title>
+    <link rel="stylesheet" href="yggdrasil.css">
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+</head>
+<body>
+    <div id="app">
+        <canvas id="bonsaiCanvas"></canvas>
+        <div class="overlay-ui">
+            <h1 id="tree-title">Chargement de l'Arbre...</h1>
+            <p id="tree-info">Structure Paper-cut 3D</p>
+        </div>
+    </div>
+    <script src="supabase.js"></script>
+    <script src="yggdrasil.js"></script>
+    <script>
+        window.onload = () => {
+            // Récupère l'ID utilisateur dans l'URL (?u=chime-xxx)
+            const urlParams = new URLSearchParams(window.location.search);
+            const userId = urlParams.get('u');
+
+            if (!userId) {
+                document.getElementById('tree-title').innerText = "Identifiant manquant";
+                document.getElementById('tree-info').innerText = "Ajoutez ?u=VOTRE_ID à l'URL";
+                return;
+            }
+
+            // Initialise le moteur avec l'ID
+            Yggdrasil.init(userId);
+        };
+    </script>
+</body>
+</html>

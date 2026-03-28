@@ -10,21 +10,26 @@
 	<body>
 		<div id="controls">
 			<label>Ouverture des bois (Angle)</label>
-			<input type="range" id="slider-spread" min="0.1" max="1.2" step="0.01" value="0.38">
+			<input type="range" id="slider-spread" min="0.1" max="1.2" step="0.01" value="0.6">
 			<label>Longueur des branches</label>
-			<input type="range" id="slider-decay" min="0.5" max="0.95" step="0.01" value="0.82">
+			<input type="range" id="slider-decay" min="0.5" max="0.95" step="0.01" value="0.725">
 			<label>Taille du Tronc (Base)</label>
-			<input type="range" id="slider-baselen" min="50" max="250" step="1" value="130">
+			<input type="range" id="slider-baselen" min="50" max="250" step="1" value="150">
 			<label>Épaisseur des bois</label>
-			<input type="range" id="slider-width" min="1" max="20" step="0.5" value="9">
+			<input type="range" id="slider-width" min="1" max="10" step="0.5" value="5">
 			<label>Courbure des branches</label>
-			<input type="range" id="slider-curvature" min="0" max="0.8" step="0.01" value="0.2">
+			<input type="range" id="slider-curvature" min="0" max="0.8" step="0.01" value="0.4">
 			<label>Vitesse de respiration</label>
-			<input type="range" id="slider-speed" min="0" max="0.01" step="0.0001" value="0.002">
-			<label>Couleur Lignée Paternelle</label>
-			<input type="color" id="color-right" value="#c8a848">
+			<input type="range" id="slider-speed" min="0" max="0.01" step="0.0001" value="0.005">
 			<label>Couleur Lignée Maternelle</label>
-			<input type="color" id="color-left" value="#88b878">
+			<input type="color" id="color-left" value="#000000">
+			<label>Couleur Lignée Paternelle</label>
+			<input type="color" id="color-right" value="#000000">
+			
+			<button id="btn-random-theme" class="btn">🎲 Aléatoire</button>
+			<button id="btn-save-all" class="btn" style="width:100%; margin-top:20px; background:#d4af37; color:#000; font-weight:bold;">
+			    💾 Sauvegarder mon Arbre
+			</button>
 		</div>
 		<div id="ui">
 			<button class="btn" onclick="Chimere.resetView()">⌂ Centrer</button>
@@ -42,7 +47,7 @@
 			<div class="gen" id="p-gen"></div>
 		</div>
 		<div id="hint">Molette · zoom — Glisser · pan — Clic · infos</div>
-		<script src="supachimerae.js"></script>
+		<script src="supabase.js"></script>
 		<script src="chimere.js"></script>
 	</body>
 </html>

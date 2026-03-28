@@ -16,15 +16,22 @@
 	<div class="ui-fixed">
 		<button class="btn-main" onclick="resetView()">🎯 Centrer</button>
 		<button class="btn-main" onclick="saveToDatabase()">☁️ Sauvegarder Cloud</button>
-		<button class="btn-main" onclick="downloadJSON()">📥 Exporter Fichier</button>
+		<!--<button class="btn-main" onclick="downloadJSON()">📥 Exporter Fichier</button>-->
 	</div>
 	<div id="modal-overlay">
 		<div class="modal">
 			<h3 id="modal-title" style="margin-top:0">Modifier la fiche</h3>
+			<label style="font-size: 12px; color: #666;">Père :</label>
+			<select id="in-father" class="modal-input"></select>
+			<label style="font-size: 12px; color: #666;">Mère :</label>
+			<select id="in-mother" class="modal-input"></select>
+			<br/>
 			<label style="font-size: 12px; color: #666;">Nom et Prénom</label>
 			<input type="text" id="in-name">
 			<label style="font-size: 12px; color: #666;">Année de naissance</label>
 			<input type="number" id="in-birth">
+			<label style="font-size: 12px; color: #666;">Année de décès (optionnel)</label>
+			<input type="number" id="in-death" placeholder="Laissez vide si vivant">
 			<label style="font-size: 12px; color: #666;">Lieu</label>
 			<input type="text" id="in-place">
 			<div class="modal-footer">
@@ -37,7 +44,7 @@
 			</div>
 		</div>
 	</div>
-		<script src="supachimerae.js"></script>
+		<script src="supabase.js"></script>
 		<script src="editit.js"></script>
 	</body>
 </html>
