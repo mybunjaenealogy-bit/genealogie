@@ -21,6 +21,7 @@ const Chimere = (() => {
 		branchDecay: 0.68, //0.82, // facteur de réduction longueur par génération
 		widthDecay:  0.62, //0.75, // facteur de réduction épaisseur par génération
 		baseLen:   50,   // longueur du 1er segment du bois
+		nodeSize: 15,
 		// Angles de base : bois droit part vers la droite-haut, gauche vers gauche-haut
 		forkSpread:  0.68,  // demi-angle de fourche à chaque bifurcation
 		// Couleurs
@@ -257,61 +258,69 @@ const Chimere = (() => {
 	        
 	        const startX = x2_logic - (mainIdx * sibSpacing) / cam.scale;
 	        const endX = startX + rackWidth / cam.scale;
-	        
-	        recursionX = startX + (rackWidth / 2) / cam.scale;
-	        
-	        // --- COURBURE LÉGÈRE ---
-	        // On baisse très légèrement le point central pour créer l'arc
 	        const lightCurveOffset = 4 / cam.scale; 
-	        const pC = { x: recursionX, y: y2_logic + lightCurveOffset };
+	        
 	        const pL = { x: startX, y: y2_logic };
 	        const pR = { x: endX, y: y2_logic };
+	        const pC = { x: (startX + endX) / 2, y: y2_logic + lightCurveOffset };
 
-	        // --- 1. TRAIT DU RÂTEAU (FIN ET UNIQUE) ---
+	        // --- 1. LE TRAIT DU RÂTEAU (Seulement si plusieurs enfants) ---
 	        if (siblingsIds.length > 1) {
 	            ctx.beginPath();
-	            ctx.lineWidth = (width * 0.15) * cam.scale; // Trait fin
+	            ctx.lineWidth = (width * 0.15) * cam.scale;
 	            ctx.strokeStyle = col;
 	            ctx.globalAlpha = baseAlpha * 0.8;
-
 	            let pPrev = w2s(pL.x, pL.y);
 	            for (let s = 1; s <= 10; s++) {
 	                const t = s / 10;
 	                const pLogic = getSimpleArcPoint(t, pL, pC, pR);
 	                const sPos = w2s(pLogic.x, pLogic.y);
-	                ctx.moveTo(pPrev.x, pPrev.y);
-	                ctx.lineTo(sPos.x, sPos.y);
+	                ctx.lineTo(sPos.x, sPos.y); // Plus simple que moveTo/lineTo à chaque fois
 	                pPrev = sPos;
 	            }
 	            ctx.stroke();
 	        }
 
-	        // --- 2. NOEUDS (Alignés sur l'arc) ---
+	        // --- 2. DESSIN DES NOEUDS (Pour chaque membre de la fratrie) ---
 	        siblingsIds.forEach((sid, idx) => {
-	            const tNode = idx / (siblingsIds.length - 1 || 1);
+	            const tNode = siblingsIds.length > 1 ? idx / (siblingsIds.length - 1) : 0.5;
 	            const pNodeBase = getSimpleArcPoint(tNode, pL, pC, pR);
 	            const sNodeBottom = w2s(pNodeBase.x, pNodeBase.y);
-	            const sNodeTop = { x: sNodeBottom.x, y: sNodeBottom.y + 12 * cam.scale };
+	            
+	            // LA LOGIQUE DE LA TIGE : Uniquement si fratrie > 1
+	            let finalNodePos = sNodeBottom;
+	            if (siblingsIds.length > 1) {
+	                const sNodeTop = { x: sNodeBottom.x, y: sNodeBottom.y + 12 * cam.scale };
+	                ctx.beginPath();
+	                ctx.lineWidth = 1 * cam.scale;
+	                ctx.globalAlpha = baseAlpha * 0.5;
+	                ctx.moveTo(sNodeBottom.x, sNodeBottom.y);
+	                ctx.lineTo(sNodeTop.x, sNodeTop.y);
+	                ctx.stroke();
+	                finalNodePos = sNodeTop; // Le cercle sera en haut de la tige
+	            }
 
-	            // Petite tige verticale simple
+	            // LE CERCLE (Toujours dessiné)
 	            ctx.beginPath();
-	            ctx.lineWidth = 1 * cam.scale;
-	            ctx.globalAlpha = baseAlpha * 0.5;
-	            ctx.moveTo(sNodeBottom.x, sNodeBottom.y);
-	            ctx.lineTo(sNodeTop.x, sNodeTop.y);
-	            ctx.stroke();
-
-	            // Cercle du nœud
-	            ctx.beginPath();
-	            ctx.arc(sNodeTop.x, sNodeTop.y, Math.max(4, P.nodeSize || 4), 0, Math.PI * 2);
-	            ctx.fillStyle = (sid === id) ? col : "#FFF";
+	            ctx.globalAlpha = baseAlpha * 2.0; // Plus opaque pour être visible
+	            ctx.arc(finalNodePos.x, finalNodePos.y, Math.max(4, P.nodeSize || 4), 0, Math.PI * 2);
+	            ctx.fillStyle = col;
 	            ctx.fill();
+	            ctx.strokeStyle = col;
+	            ctx.lineWidth = 1 * cam.scale;
 	            ctx.stroke();
 
-	            hits.push({ id: sid, wx: pNodeBase.x, wy: pNodeBase.y + 12 / cam.scale, r: 15 });
+	            // Zone cliquable
+	            hits.push({ 
+	                id: sid, 
+	                wx: pNodeBase.x, 
+	                wy: pNodeBase.y + (siblingsIds.length > 1 ? 12 / cam.scale : 0), 
+	                r: 15 
+	            });
 	        });
 
-	        recursionY = y2_logic + lightCurveOffset;
+	        recursionX = pC.x;
+	        recursionY = pC.y;
 	    }
 
 	    // ===================================================================
@@ -545,34 +554,43 @@ const Chimere = (() => {
 
 	    if (userImage) {
 	        ctx.save();
-	        // 1. Créer le masque elliptique pour le visage (fixe par rapport aux bois)
+        
+	        // 0. SÉCURITÉ : On s'assure d'être en mode de dessin normal
+	        ctx.globalCompositeOperation = 'source-over';
+	        ctx.globalAlpha = 1.0;
+
+	        // 1. Masque elliptique
 	        ctx.beginPath();
 	        ctx.ellipse(o.x, o.y, P.faceW * sc, P.faceH * sc, 0, 0, Math.PI * 2);
 	        ctx.clip();
 	        
-	        // 2. Calculer la taille de base pour que l'image remplisse l'ellipse
 	        const aspect = userImage.width / userImage.height;
 	        const baseH = P.faceH * 2.2 * sc;
 	        const baseW = baseH * aspect;
 
-	        // 3. Appliquer les transformations utilisateur (imgTransform)
-	        // On ajoute le décalage multiplié par le scale de la caméra
 	        const drawX = o.x - (baseW / 2) + (imgTransform.x * sc);
 	        const drawY = o.y - (baseH / 2) + (imgTransform.y * sc);
 	        const drawW = baseW * imgTransform.scale;
 	        const drawH = baseH * imgTransform.scale;
 
+	        // 2. DESSIN DE L'IMAGE DE BASE
 	        ctx.drawImage(userImage, drawX, drawY, drawW, drawH);
 	        
-	        // Effets Noir & Blanc
+	        // 3. PASSAGE EN NOIR ET BLANC (Mode 'color')
+	        // On dessine un rectangle gris par-dessus avec le mode 'color'
+	        // Ce mode conserve la luminosité de l'image mais prend la couleur du rectangle
 	        ctx.globalCompositeOperation = 'color';
-	        ctx.fillStyle = 'gray';
-	        ctx.fillRect(drawX, drawY, drawW, drawH);
+	        ctx.fillStyle = "#888888"; 
+	        ctx.fillRect(drawX - 5, drawY - 5, drawW + 10, drawH + 10);
 	        
-	        ctx.globalCompositeOperation = 'overlay';
-	        ctx.fillStyle = 'rgba(0,0,0,0.2)';
-	        ctx.fillRect(drawX, drawY, drawW, drawH);
+	        // 4. AJUSTEMENT DU CONTRASTE (Mode 'multiply')
+	        // Pour éviter l'aspect "délavé" et rendre les noirs plus profonds
+	        ctx.globalCompositeOperation = 'multiply';
+	        ctx.fillStyle = "rgba(0, 0, 0, 0.15)";
+	        ctx.fillRect(drawX - 5, drawY - 5, drawW + 10, drawH + 10);
 
+	        // 5. RÉINITIALISATION FINALE
+	        ctx.globalCompositeOperation = 'source-over';
 	        ctx.restore();
 	    } else {
 	        // Lueur douce derrière le visage
@@ -961,8 +979,6 @@ const Chimere = (() => {
 		if (userId) window.location.href = `edit.html?u=${userId}`;
 		else 		window.location.href = `edit.html`;
 	}
-
-	// Dans ton script Chimère, modifie la fonction handleImage
 	async function handleImage(input) {
 		if (input.files && input.files[0]) {
 			const file = input.files[0];
@@ -974,6 +990,7 @@ const Chimere = (() => {
 			reader.onload = (e) => {
 				const img = new Image();
 				img.onload = () => { userImage = img; };
+				img.crossOrigin = "Anonymous";
 				img.src = e.target.result;
 			};
 			reader.readAsDataURL(file);
@@ -1058,7 +1075,7 @@ const Chimere = (() => {
 	    } else {
 	        // --- CAS CHIMÈRE ---
 	        const randomNumber = Math.floor(1000 + Math.random() * 9000);
-	        userId = `chimere-${randomNumber}`; // On remplit userId ici aussi
+	        userId = `chime-${randomNumber}`; // On remplit userId ici aussi
 
 	        urlParams.set('u', userId);
 	        const newUrl = `${window.location.pathname}?${urlParams.toString()}`;

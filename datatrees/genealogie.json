@@ -3,8 +3,8 @@
   "people": {
     "ego": {
       "id": "ego",
-      "name": "Matthieu Vincent",
-      "birth": 1982,
+      "name": "Nom Prénom",
+      "birth": null,
       "death": null,
       "place": "Paris",
       "fatherId": "ffq1jt",
