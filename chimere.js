@@ -48,7 +48,7 @@ const Chimere = (() => {
     { name: "limeCream vintGrape", 				left: "#ddea78", right: "#433455" },
     { name: "celadon chocoPlum", 					left: "#a8d3a8", right: "#553832" },
     { name: "cherryBlossom deepTwilight", left: "#f9a8bb", right: "#1a1265" }
-];
+	];
 
 	// ÉTAT RUNTIME
 	let canvas, ctx, W, H;
@@ -65,7 +65,6 @@ const Chimere = (() => {
 	    scale: 1.0  // Zoom propre à l'image
 	};
 	let isTransformingImg = false; // Pour savoir si on drag l'image ou la caméra
-	let wheelSaveTimeout;
 	// HELPERS COORDS
 	const w2s = (wx, wy) => ({ // World to Screen
 		x: W/2 + (wx + cam.x) * cam.scale,
@@ -88,17 +87,6 @@ const Chimere = (() => {
 			console.error("Erreur critique au chargement du JSON :", err);
 		}
 	}
-
-	// CALCUL DE PROFONDEUR MAX (pour normaliser l'opacité)
-	function maxDepth(id, depth=0) {
-		const p = DB.people[id];
-		if (!p) return depth;
-		return Math.max(
-			p.fatherId ? maxDepth(p.fatherId, depth+1) : depth,
-			p.motherId ? maxDepth(p.motherId, depth+1) : depth
-		);
-	}
-
 	function applyRandomTheme() {
     // 1. Choisir un index au hasard
     const theme = ANTLER_THEMES[Math.floor(Math.random() * ANTLER_THEMES.length)];
@@ -115,32 +103,20 @@ const Chimere = (() => {
 
     console.log(`Thème appliqué : ${theme.name}`);
 	}
-
 	// Génère un nombre "pseudo-aléatoire" stable
 	const stableRandom = (s) => {
 		const x = Math.sin(s) * 10000;
 		return x - Math.floor(x);
 	};
-
-	/** DESSIN DU BOIS (récursif)
-	 * id       : identifiant de la personne représentée par ce segment
-	 * x1,y1    : point de départ du segment (coords monde)
-	 * angle    : direction du segment (radians, 0=droite, -PI/2=haut)
-	 * length   : longueur du segment
-	 * width    : épaisseur du segment
-	 * depth    : profondeur actuelle (0=tronc direct)
-	 * side     : 'R' ou 'L' (pour la couleur de base)
-	 */
-	/**
-	 * Calcule un point le long d'une trajectoire Concave, affaissée vers le centre.
-	 */
-	function getSimpleArcPoint(t, pL, pC, pR) {
-	    // Interpolation quadratique standard (Bézier)
-	    const x = (1 - t)**2 * pL.x + 2 * (1 - t) * t * pC.x + t**2 * pR.x;
-	    const y = (1 - t)**2 * pL.y + 2 * (1 - t) * t * pC.y + t**2 * pR.y;
-	    return { x, y };
+	function getFullSiblings(id) {
+	    const p = DB.people[id];
+	    if (!p || (!p.fatherId && !p.motherId)) return [];
+	    return Object.keys(DB.people).filter(otherId => {
+	        if (otherId === id) return false;
+	        const o = DB.people[otherId];
+	        return o.fatherId === p.fatherId && o.motherId === p.motherId && p.fatherId !== null;
+	    });
 	}
-
 	function drawAntler(id, x1, y1, angle, length, width, depth, side) {
 	    const person = (id && DB.people[id]) ? DB.people[id] : null;
 	    const known = !!person;
@@ -157,51 +133,7 @@ const Chimere = (() => {
 
 	    ctx.save();
 	    ctx.lineCap = 'round';
-	    if (depth > 0) ctx.filter = `saturate(${Math.max(0.5, 1 - depth * 0.5)}) brightness(${Math.max(0.5, 1 - depth * 0.5)})`;
-
-	    // ===================================================================
-	    // --- 1. TRONC ET ROSETTE (NIVEAU 0) ---
-	    // ===================================================================
-	    if (depth === 0) {
-	        const baseTrunkLen = 20;
-	        const baseTrunkW = width * 1.1;
-	        const tx2 = x1 + Math.cos(trunkAngle) * baseTrunkLen;
-	        const ty2 = y1 + Math.sin(trunkAngle) * baseTrunkLen;
-	        
-	        if (typeof drawTrunk === "function") drawTrunk(x1, y1, tx2, ty2, baseTrunkW, col);
-	        
-	        const rosetteCol = known ? (side === 'R' ? '#FFE8A0' : '#B8E8A8') : P.colUnknown;
-	        const rosetteRadius = width * 1.15;
-	        const numRosetteFibers = Math.floor(25 * 1.8);
-
-	        for (let r = 0; r < numRosetteFibers; r++) {
-	            const seed = r * r + (x1 > 0 ? 7123 : 14321);
-	            const rSpread = Math.PI * 1.2; 
-	            const rAngle = (animatedAngle - rSpread/2) + (stableRandom(seed) * rSpread);
-	            const rDist = (0.6 + stableRandom(seed + 1) * 0.4) * rosetteRadius;
-	            const rx = tx2 + Math.cos(rAngle) * rDist;
-	            const ry = ty2 + Math.sin(rAngle) * rDist;
-	            const sNodeJoin = w2s(tx2, ty2);
-	            const sEdge = w2s(rx, ry);
-	            const cpX = tx2 + Math.cos(animatedAngle - Math.PI) * (rDist * 0.5);
-	            const cpY = ty2 + Math.sin(animatedAngle - Math.PI) * (rDist * 0.5);
-	            const sCP_Rosette = w2s(cpX, cpY);
-
-	            let rLastP = { x: sNodeJoin.x, y: sNodeJoin.y };
-	            for (let st = 1; st <= 8; st++) {
-	                const t = st / 8;
-	                const cx = (1-t)**2 * sNodeJoin.x + 2*(1-t)*t * sCP_Rosette.x + t**2 * sEdge.x;
-	                const cy = (1-t)**2 * sNodeJoin.y + 2*(1-t)*t * sCP_Rosette.y + t**2 * sEdge.y;
-	                ctx.beginPath();
-	                ctx.globalAlpha = baseAlpha * (1.2 + stableRandom(seed+2)*0.5) * (1-t);
-	                ctx.lineWidth = (width * 0.12) * cam.scale;
-	                ctx.strokeStyle = rosetteCol;
-	                ctx.moveTo(rLastP.x, rLastP.y); ctx.lineTo(cx, cy); ctx.stroke();
-	                rLastP = { x: cx, y: cy };
-	            }
-	        }
-	        x1 = tx2; y1 = ty2;
-	    }
+	    //if (depth > 0) ctx.filter = `saturate(${Math.max(0.5, 1 - depth * 0.5)}) brightness(${Math.max(0.5, 1 - depth * 0.5)})`;
 
 	    // ===================================================================
 	    // --- 2. FIBRES DE LA BRANCHE PRINCIPALE ---
@@ -227,101 +159,53 @@ const Chimere = (() => {
 	        const sEnd = w2s(fX2, fY2);
 	        const scp = w2s(fCpX, fCpY);
 	        let lastPoint = { x: sStartAnimated.x, y: sStartAnimated.y };
+	        ctx.beginPath();
+	        ctx.strokeStyle = col;
 	        for (let t_step = 1; t_step <= 12; t_step++) {
 	            const t = t_step / 12;
 	            const currX = (1-t)**2 * sStartAnimated.x + 2*(1-t)*t * scp.x + t**2 * sEnd.x;
 	            const currY = (1-t)**2 * sStartAnimated.y + 2*(1-t)*t * scp.y + t**2 * sEnd.y;
-	            ctx.beginPath();
+	            
 	            ctx.lineWidth = (width * 0.8) * cam.scale * Math.max(0.1, (1 - t * 0.9));
 	            ctx.globalAlpha = baseAlpha * (0.6 + stableRandom(seed + 3) * 0.4) * (1 - t * 0.4);
-	            ctx.strokeStyle = col;
-	            ctx.moveTo(lastPoint.x, lastPoint.y); ctx.lineTo(currX, currY); ctx.stroke();
+	            
+	            ctx.moveTo(lastPoint.x, lastPoint.y); ctx.lineTo(currX, currY); 
 	            lastPoint = { x: currX, y: currY };
 	        }
+	        ctx.stroke();
 	    }
 	    ctx.restore();
 
-	    // ===================================================================
-	    // --- 3. LE PALIER DE LA FRATRIE (CONCAVE & EFFILOCHÉ) ---
-	    // ===================================================================
-	    const x2_logic = x1 + Math.cos(animatedAngle) * length;
-	    const y2_logic = y1 + Math.sin(animatedAngle) * length;
-	    let recursionX = x2_logic;
-	    let recursionY = y2_logic;
+	    // --- 3. RENDU DES FRATRIES ET DESCENDANCES INCOMPLÈTES ---
+		const x2_logic = x1 + Math.cos(animatedAngle) * length;
+		const y2_logic = y1 + Math.sin(animatedAngle) * length;
 
-	    if (known) {
-	        const father = DB.people[person.fatherId];
-	        const siblingsIds = (father && father.children) ? father.children : [person.id];
-	        const sibSpacing = 35 * cam.scale;
-	        const mainIdx = siblingsIds.indexOf(id);
-	        const rackWidth = (siblingsIds.length - 1) * sibSpacing;
-	        
-	        const startX = x2_logic - (mainIdx * sibSpacing) / cam.scale;
-	        const endX = startX + rackWidth / cam.scale;
-	        const lightCurveOffset = 4 / cam.scale; 
-	        
-	        const pL = { x: startX, y: y2_logic };
-	        const pR = { x: endX, y: y2_logic };
-	        const pC = { x: (startX + endX) / 2, y: y2_logic + lightCurveOffset };
+		if (known) {
+		    // A. FRATRIE COMPLÈTE (S'agglutine autour de l'individu pivot)
+		    const fullSibs = getFullSiblings(id);
+		    const satellites = fullSibs.filter(sid => DB.people[sid]?.isClustered);
+		    
+		    if (satellites.length > 0) {
+		        // Ces cercles gravitent autour du pivot (x2_logic, y2_logic)
+		        drawFullSiblingCluster(satellites, x2_logic, y2_logic, animatedAngle, baseAlpha, col);
+		    }
 
-	        // --- 1. LE TRAIT DU RÂTEAU (Seulement si plusieurs enfants) ---
-	        if (siblingsIds.length > 1) {
-	            ctx.beginPath();
-	            ctx.lineWidth = (width * 0.15) * cam.scale;
-	            ctx.strokeStyle = col;
-	            ctx.globalAlpha = baseAlpha * 0.8;
-	            let pPrev = w2s(pL.x, pL.y);
-	            for (let s = 1; s <= 10; s++) {
-	                const t = s / 10;
-	                const pLogic = getSimpleArcPoint(t, pL, pC, pR);
-	                const sPos = w2s(pLogic.x, pLogic.y);
-	                ctx.lineTo(sPos.x, sPos.y); // Plus simple que moveTo/lineTo à chaque fois
-	                pPrev = sPos;
-	            }
-	            ctx.stroke();
-	        }
+		    // B. ENFANTS DE FRATRIE INCOMPLÈTE (Trait + Cercle depuis le pivot)
+		    const allChildren = getChildren(id);
+		    const incompleteChildren = allChildren.filter(cid => {
+		        const child = DB.people[cid];
+		        // On considère incomplète si un des parents est null ou si c'est un demi-frère de la lignée
+		        return ((!child.fatherId || !child.motherId) && child.isClustered);
+		    });
 
-	        // --- 2. DESSIN DES NOEUDS (Pour chaque membre de la fratrie) ---
-	        siblingsIds.forEach((sid, idx) => {
-	            const tNode = siblingsIds.length > 1 ? idx / (siblingsIds.length - 1) : 0.5;
-	            const pNodeBase = getSimpleArcPoint(tNode, pL, pC, pR);
-	            const sNodeBottom = w2s(pNodeBase.x, pNodeBase.y);
-	            
-	            // LA LOGIQUE DE LA TIGE : Uniquement si fratrie > 1
-	            let finalNodePos = sNodeBottom;
-	            if (siblingsIds.length > 1) {
-	                const sNodeTop = { x: sNodeBottom.x, y: sNodeBottom.y + 12 * cam.scale };
-	                ctx.beginPath();
-	                ctx.lineWidth = 1 * cam.scale;
-	                ctx.globalAlpha = baseAlpha * 0.5;
-	                ctx.moveTo(sNodeBottom.x, sNodeBottom.y);
-	                ctx.lineTo(sNodeTop.x, sNodeTop.y);
-	                ctx.stroke();
-	                finalNodePos = sNodeTop; // Le cercle sera en haut de la tige
-	            }
+		    if (incompleteChildren.length > 0) {
+		        // Ces enfants partent du pivot (x2_logic, y2_logic) vers l'extérieur
+		        drawIncompleteChildren(incompleteChildren, x2_logic, y2_logic, animatedAngle, baseAlpha, col);
+		    }
 
-	            // LE CERCLE (Toujours dessiné)
-	            ctx.beginPath();
-	            ctx.globalAlpha = baseAlpha * 2.0; // Plus opaque pour être visible
-	            ctx.arc(finalNodePos.x, finalNodePos.y, Math.max(4, P.nodeSize || 4), 0, Math.PI * 2);
-	            ctx.fillStyle = col;
-	            ctx.fill();
-	            ctx.strokeStyle = col;
-	            ctx.lineWidth = 1 * cam.scale;
-	            ctx.stroke();
-
-	            // Zone cliquable
-	            hits.push({ 
-	                id: sid, 
-	                wx: pNodeBase.x, 
-	                wy: pNodeBase.y + (siblingsIds.length > 1 ? 12 / cam.scale : 0), 
-	                r: 15 
-	            });
-	        });
-
-	        recursionX = pC.x;
-	        recursionY = pC.y;
-	    }
+		    // C. LE CERCLE PIVOT (L'individu lui-même)
+		    drawMainNode(id, x2_logic, y2_logic, col, baseAlpha);
+		}
 
 	    // ===================================================================
 	    // --- 4. RÉCURSION ---
@@ -331,218 +215,122 @@ const Chimere = (() => {
 	    const nextW = width * P.widthDecay;
 	    if (nextLen < 5) return;
 	    const spread = P.forkSpread * (1 + depth * 0.05);
-	    drawAntler(person.fatherId, recursionX, recursionY, animatedAngle + spread * 0.5, nextLen, nextW, depth + 1, side);
-	    drawAntler(person.motherId, recursionX, recursionY, animatedAngle - spread * 0.5, nextLen, nextW, depth + 1, side);
+	    drawAntler(person.fatherId, x2_logic, y2_logic, animatedAngle + spread * 0.5, nextLen, nextW, depth + 1, side);
+	    drawAntler(person.motherId, x2_logic, y2_logic, animatedAngle - spread * 0.5, nextLen, nextW, depth + 1, side);
 	}
-	/**
-	 * Fonction helper pour dessiner les enfants et leurs propres descendants
-	 * sous forme de pics vers le bas.
-	 */
-	function drawChildrenNodes(children, px, py, pLen, pW, pAlpha, col, parentId, level = 1) {
-		children.forEach((child, i) => {
-			const angleSpread = 0.8;
-			// L'angle est basé sur le bas (Math.PI / 2)
-			const angle = (Math.PI / 2) + (i - (children.length - 1) / 2) * (angleSpread / Math.max(1, children.length - 1));
-			
-			const cLen = pLen * (0.3 / level); 
-			const cx = px + Math.cos(angle) * cLen;
-			const cy = py + Math.sin(angle) * cLen;
-			
-			const sStart = w2s(px, py);
-			const numChildFibers = 24;
+	function drawIncompleteChildren(childIds, px, py, angle, baseAlpha, col) {
+	    childIds.forEach((cid, i) => {
+	        const seed = cid.length + i;
+	        const sideAngle = angle + (i % 2 === 0 ? 1.8 : -1.8);
+	        const dist = 40 / cam.scale; // Longueur de l'andouiller
 
-			ctx.save();
-			for (let j = 0; j < numChildFibers; j++) {
-				const cSeed = parentId.length + i + j + level * 50;
-				// Éparpillement à l'arrivée uniquement
-				const cOffX = (stableRandom(cSeed) - 0.5) * (pW * 2.0);
-				const cOffY = (stableRandom(cSeed + 1) - 0.5) * (pW * 2.0);
-				const sEnd = w2s(cx + cOffX, cy + cOffY);
-
-				const steps = 16;
-				let lastP = { x: sStart.x, y: sStart.y };
-				const baseW = (pW * 0.4 / level) * cam.scale;
-
-				for (let t_step = 1; t_step <= steps; t_step++) {
-					const t = t_step / steps;
-					const currX = sStart.x + (sEnd.x - sStart.x) * t;
-					const currY = sStart.y + (sEnd.y - sStart.y) * t;
-
-					ctx.beginPath();
-					ctx.lineWidth = baseW * (1 - t * 0.8); // Effilage
-					ctx.globalAlpha = pAlpha * 0.4 * (1 - t * 0.3);
-					ctx.strokeStyle = col;
-					ctx.moveTo(lastP.x, lastP.y);
-					ctx.lineTo(currX, currY);
-					ctx.stroke();
-					lastP = { x: currX, y: currY };
-				}
-			}
-			ctx.restore();
-
-			// Petit nœud de l'enfant
-			const sNode = w2s(cx, cy);
-			const cR = (1.2 / level) * cam.scale;
-			ctx.beginPath();
-			ctx.arc(sNode.x, sNode.y, cR, 0, Math.PI * 2);
-			ctx.fillStyle = col;
-			ctx.fill();
-
-			if (child.children && child.children.length > 0) {
-					drawChildrenNodes(child.children, cx, cy, cLen, pW, pAlpha, col, `${parentId}_${i}`, level + 1);
-			}
-		});
-	}
-
-	function drawSiblingsAndouillers(siblingsIds, px, py, angle, length, width, baseAlpha, col) {
-	    if (!siblingsIds || siblingsIds.length === 0) return;
-
-	    const numSiblings = siblingsIds.length;
-	    // On espace les andouillers le long de la branche parente
-	    const stepLength = length / (numSiblings + 1); 
-	    const andouillerLength = 15; // Longueur de la pointe (le frère/sœur)
-	    const andouillerWidth = width * 0.4;
-
-	    siblingsIds.forEach((siblingId, index) => {
-	        // Position le long de la branche
-	        const distAlong = stepLength * (index + 1);
-	        const attachX = px + Math.cos(angle) * distAlong;
-	        const attachY = py + Math.sin(angle) * distAlong;
-
-	        // Angle perpendiculaire à la branche pour la pointe
-	        // On alterne gauche/droite pour l'esthétique
-	        const sideAngle = (index % 2 === 0) ? angle - Math.PI/2 : angle + Math.PI/2;
+	        const targetX = px + Math.cos(sideAngle) * dist;
+	        const targetY = py + Math.sin(sideAngle) * dist;
 	        
-	        const endX = attachX + Math.cos(sideAngle) * andouillerLength;
-	        const endY = attachY + Math.sin(sideAngle) * andouillerLength;
+	        // --- RENDU FIBREUX (Échevelé) ---
+	        const numFibres = 6; // Nombre de brins par andouiller
+	        for (let f = 0; f < numFibres; f++) {
+	            const fSeed = seed + f * 0.1;
+	            ctx.beginPath();
+	            ctx.lineWidth = (0.3 + stableRandom(fSeed) * 0.5) * cam.scale;
+	            ctx.strokeStyle = col;
+	            ctx.globalAlpha = baseAlpha * 0.4;
 
-	        // 1. Dessin de l'andouiller (fibres fines)
-	        ctx.beginPath();
-	        ctx.lineWidth = andouillerWidth * cam.scale;
-	        ctx.strokeStyle = col;
-	        ctx.globalAlpha = baseAlpha * 0.7; // Un peu plus discret
-	        ctx.moveTo(w2s(attachX, attachY).x, w2s(attachX, attachY).y);
-	        ctx.lineTo(w2s(endX, endY).x, w2s(endX, endY).y);
-	        ctx.stroke();
+	            let curX = px;
+	            let curY = py;
+	            const steps = 8; // Nombre de segments pour la courbure
 
-	        // 2. Le point final de la fratrie
-	        const radius = 3 * cam.scale;
+	            const sPosStart = w2s(curX, curY);
+	            ctx.moveTo(sPosStart.x, sPosStart.y);
+
+	            for (let s = 1; s <= steps; s++) {
+	                const t = s / steps;
+	                // Interpolation linéaire vers la cible
+	                let nextX = px + (targetX - px) * t;
+	                let nextY = py + (targetY - py) * t;
+
+	                // AJOUT DE LA COURBURE / EFFET ÉCHEVELÉ
+	                // On ajoute un décalage perpendiculaire qui augmente avec t
+	                const wobble = Math.sin(t * Math.PI) * (stableRandom(fSeed + s) - 0.5) * 8 / cam.scale;
+	                const perpAngle = sideAngle + Math.PI / 2;
+	                
+	                nextX += Math.cos(perpAngle) * wobble;
+	                nextY += Math.sin(perpAngle) * wobble;
+
+	                const sPos = w2s(nextX, nextY);
+	                ctx.lineTo(sPos.x, sPos.y);
+	            }
+	            ctx.stroke();
+	        }
+
+	        // --- LE CERCLE DE L'ENFANT (au bout des fibres) ---
+	        const sFinalPos = w2s(targetX, targetY);
 	        ctx.beginPath();
-	        ctx.arc(w2s(endX, endY).x, w2s(endX, endY).y, radius, 0, Math.PI * 2);
-	        ctx.fillStyle = col;
+	        ctx.arc(sFinalPos.x, sFinalPos.y, (P.nodeSize * 0.6) * cam.scale, 0, Math.PI * 2);
+	        ctx.fillStyle = "#bdc3c7"; 
+	        ctx.globalAlpha = baseAlpha;
 	        ctx.fill();
 
-	        // Zone de clic pour le frère/sœur
-	        hits.push({ id: siblingId, wx: endX, wy: endY, r: 15 });
+	        hits.push({ id: cid, wx: targetX, wy: targetY, r: 10 });
 	    });
 	}
+	function drawFullSiblingCluster(sibIds, px, py, angle, baseAlpha, col) {
+	    sibIds.forEach((sid, idx) => {
+	        const seed = sid.length + idx;
+	        const dist = (P.nodeSize * 1.1) / cam.scale; // Très proche pour l'agglutinement
+	        const ang = angle + (idx + 1) * (Math.PI * 2 / (sibIds.length + 1));
+	        
+	        const sx = px + Math.cos(ang) * dist;
+	        const sy = py + Math.sin(ang) * dist;
+	        const sPos = w2s(sx, sy);
 
-	function drawSiblingsRack(person, px, py, width, col, baseAlpha) {
-    // On récupère tous les enfants des parents de 'person' pour avoir la fratrie complète
-    const father = DB.people[person.fatherId];
-    const siblingsIds = father ? father.children : [person.id]; 
-    
-    const num = siblingsIds.length;
-    const spacing = 40; // Espace entre frères/sœurs
-    const rackW = (num - 1) * spacing;
-    const startX = px - rackW / 2;
-    const rackY = py - 20; // Hauteur du palier
-
-    // 1. Barre horizontale
-    ctx.beginPath();
-    ctx.lineWidth = (width * 0.5) * cam.scale;
-    ctx.strokeStyle = col;
-    ctx.globalAlpha = baseAlpha;
-    const sLeft = w2s(startX, rackY);
-    const sRight = w2s(startX + rackW, rackY);
-    ctx.moveTo(sLeft.x, sLeft.y);
-    ctx.lineTo(sRight.x, sRight.y);
-    ctx.stroke();
-
-    // 2. Tiges verticales et nœuds pour chaque membre
-    siblingsIds.forEach((sid, i) => {
-        const x = startX + i * spacing;
-        const sBottom = w2s(x, rackY);
-        const sTop = w2s(x, rackY - 10);
-
-        ctx.beginPath();
-        ctx.lineWidth = (width * 0.3) * cam.scale;
-        ctx.moveTo(sBottom.x, sBottom.y);
-        ctx.lineTo(sTop.x, sTop.y);
-        ctx.stroke();
-
-        // Nœud de la personne (cercle)
-        ctx.beginPath();
-        ctx.arc(sTop.x, sTop.y, 5 * cam.scale, 0, Math.PI * 2);
-        ctx.fillStyle = (sid === person.id) ? col : "#FFF"; // On surligne l'ancêtre direct
-        ctx.fill();
-        ctx.stroke();
-
-        hits.push({ id: sid, wx: x, wy: rackY - 10, r: 15 });
-    });
-
-    return { centerX: px, centerY: rackY }; // On repart du milieu du râteau pour les parents
-}
-
-	function drawTrunk(x1, y1, x2, y2, width, col) {
-	const numFibers = 40;
-	const angle = Math.atan2(y2 - y1, x2 - x1);
-	const sc = cam.scale;
-
-	ctx.save();
-	ctx.lineCap = 'round';
-
-	for (let i = 0; i < numFibers; i++) {
-		const seed = i + (x1 > 0 ? 5000 : 10000);
-		
-		const wander = Math.sin(i * 0.5) * (width * 0.4); 
-		const shiftStart = ((stableRandom(seed) - 0.5) * width * 2.5) + wander;
-		const shiftEnd = (stableRandom(seed + 1) - 0.5) * width * 1.5;
-
-		const midX = (x1 + x2) * 0.5;
-		const midY = (y1 + y2) * 0.5;
-		const curveAmp = width * 1.2;
-		const cpX = midX + Math.cos(angle + Math.PI/2) * ((stableRandom(seed + 2) - 0.5) * curveAmp);
-		const cpY = midY + Math.sin(angle + Math.PI/2) * ((stableRandom(seed + 2) - 0.5) * curveAmp);
-
-		const sStart = w2s(
-			x1 + Math.cos(angle + Math.PI/2) * shiftStart,
-			y1 + Math.sin(angle + Math.PI/2) * shiftStart
-		);
-		const sEnd = w2s(
-			x2 + Math.cos(angle + Math.PI/2) * shiftEnd,
-			y2 + Math.sin(angle + Math.PI/2) * shiftEnd
-		);
-		const sCP = w2s(cpX, cpY);
-
-		const steps = 14; // Augmenté légèrement pour plus de fluidité
-		let lp = { x: sStart.x, y: sStart.y };
-		
-		for (let t_step = 1; t_step <= steps; t_step++) {
-			const t = t_step / steps; // t va de 0 à 1
-			const cx = (1 - t) * (1 - t) * sStart.x + 2 * (1 - t) * t * sCP.x + t * t * sEnd.x;
-			const cy = (1 - t) * (1 - t) * sStart.y + 2 * (1 - t) * t * sCP.y + t * t * sEnd.y;
-
-			ctx.beginPath();
-			
-			// --- MODIFICATION ICI : ALPHA PROGRESSIF ---
-			// t = 0 (crâne) -> alpha proche de 0
-			// t = 1 (jonction bois) -> alpha maximum (1.0)
-			const rampUp = t; // Progression linéaire
-			// On multiplie par un facteur aléatoire pour garder l'aspect fibreux
-			ctx.globalAlpha = (0.1 + stableRandom(seed + 3) * 0.5) * rampUp;
-			
-			// On épaissit un peu la ligne pour éviter le côté "fil de fer"
-			ctx.lineWidth = (width * 0.12) * sc; 
-			ctx.strokeStyle = col;
-			
-			ctx.moveTo(lp.x, lp.y);
-			ctx.lineTo(cx, cy);
-			ctx.stroke();
-			lp = { x: cx, y: cy };
-		}
+	        ctx.beginPath();
+	        ctx.arc(sPos.x, sPos.y, (P.nodeSize * 0.7) * cam.scale, 0, Math.PI * 2);
+	        ctx.fillStyle = col;
+	        ctx.globalAlpha = baseAlpha * 1.2;
+	        ctx.fill();
+	        
+	        // Optionnel : petit trait vers le centre du pivot
+	        hits.push({ id: sid, wx: sx, wy: sy, r: 10 });
+	    });
 	}
-	ctx.restore();
+	function getChildren(parentId) {
+	    if (!parentId) return [];
+	    // On filtre toutes les personnes de la DB dont le père OU la mère est parentId
+	    return Object.keys(DB.people).filter(id => {
+	        const p = DB.people[id];
+	        return p.fatherId === parentId || p.motherId === parentId;
+	    });
+	}
+	// Gestion cercle principal
+	function drawMainNode(id, wx, wy, col, baseAlpha) {
+	    const sPos = w2s(wx, wy);
+	    const radius = (P.nodeSize || 10) * cam.scale;
+
+	    ctx.save();
+	    ctx.beginPath();
+	    ctx.arc(sPos.x, sPos.y, radius, 0, Math.PI * 2);
+	    
+	    // Remplissage avec la couleur de la branche
+	    ctx.fillStyle = col;
+	    ctx.globalAlpha = Math.min(1.0, baseAlpha * 2.0);
+	    ctx.fill();
+
+	    // Contour blanc pour détacher le cercle du fond et des fibres
+	    ctx.lineWidth = 2 * cam.scale;
+	    ctx.strokeStyle = "#ffffff";
+	    ctx.globalAlpha = baseAlpha;
+	    ctx.stroke();
+	    
+	    ctx.restore();
+
+	    // Ajout à la liste des zones cliquables (hit-test)
+	    hits.push({ 
+	        id: id, 
+	        wx: wx, 
+	        wy: wy, 
+	        r: radius / cam.scale // r en coordonnées monde pour la précision
+	    });
 	}
 
 	// ══════════════════════════════════════════════════════
@@ -561,8 +349,8 @@ const Chimere = (() => {
 
 	        // 1. Masque elliptique
 	        ctx.beginPath();
-	        ctx.ellipse(o.x, o.y, P.faceW * sc, P.faceH * sc, 0, 0, Math.PI * 2);
-	        ctx.clip();
+	        //ctx.ellipse(o.x, o.y, P.faceW * sc, P.faceH * sc, 0, 0, Math.PI * 2);
+	        //ctx.clip();
 	        
 	        const aspect = userImage.width / userImage.height;
 	        const baseH = P.faceH * 2.2 * sc;
@@ -581,13 +369,13 @@ const Chimere = (() => {
 	        // Ce mode conserve la luminosité de l'image mais prend la couleur du rectangle
 	        ctx.globalCompositeOperation = 'color';
 	        ctx.fillStyle = "#888888"; 
-	        ctx.fillRect(drawX - 5, drawY - 5, drawW + 10, drawH + 10);
+	        ctx.fillRect(drawX, drawY, drawW, drawH);
 	        
 	        // 4. AJUSTEMENT DU CONTRASTE (Mode 'multiply')
 	        // Pour éviter l'aspect "délavé" et rendre les noirs plus profonds
 	        ctx.globalCompositeOperation = 'multiply';
 	        ctx.fillStyle = "rgba(0, 0, 0, 0.15)";
-	        ctx.fillRect(drawX - 5, drawY - 5, drawW + 10, drawH + 10);
+	        ctx.fillRect(drawX, drawY, drawW, drawH);
 
 	        // 5. RÉINITIALISATION FINALE
 	        ctx.globalCompositeOperation = 'source-over';
@@ -684,15 +472,6 @@ const Chimere = (() => {
 	// RENDU PRINCIPAL
 	// ══════════════════════════════════════════════════════
 	function render() {
-		// 1. SÉCURITÉ : Si les données ne sont pas chargées, on affiche un message ou on attend
-		if (!DB || !DB.people || !DB.ego) {
-			ctx.fillStyle = "#000";
-			ctx.fillRect(0, 0, W, H);
-			ctx.fillStyle = "#FFF";
-			ctx.fillText("Chargement des racines...", W/2, H/2);
-			return; 
-		}
-
 		ctx.clearRect(0, 0, W, H);
 
 		// Fond
@@ -704,15 +483,26 @@ const Chimere = (() => {
 
 		// ── Visage
 		drawFace();
-
+	    
 		// ── Points d'attache
 		const attachR = { x:  P.faceW * 0.5, y: -P.faceH * 0.55 };
 		const attachL = { x: -P.faceW * 0.5, y: -P.faceH * 0.55 };
 
 		// Récupération de l'individu racine (Matthieu Vincent)
-		const egoId = DB.ego;
-		const egoData = DB.people[egoId];
-
+		const egoData = DB.people[DB.ego];
+		// 3. SÉCURITÉ CIBLÉE sur les bois uniquement
+		if (!DB || !DB.people || !DB.ego || !DB.people[DB.ego]) {
+		    ctx.save();
+		    ctx.fillStyle = "white";
+		    ctx.font = "20px Georgia";
+		    ctx.textAlign = "center";
+		    ctx.globalAlpha = 0.6;
+		    ctx.fillText("Portez votre arbre généalogique", W/2, H/2 - 40);
+		    ctx.font = "14px Arial";
+		    ctx.fillText("Bienvenue dans une expérience généa-chimèrique,", W/2, H/2 - 10);
+		    ctx.fillText("cliquez sur 'Créer mon arbre' pour commencer.", W/2, H/2 + 10);
+		    ctx.restore();
+		}
 		if (egoData) {
 			// Paramètres du socle osseux osseux
 			const baseTrunkLen = 30; // Longueur du petit socle
@@ -730,6 +520,19 @@ const Chimere = (() => {
 			if (egoData.motherId) {
 				const angleL = -Math.PI / 2 - (P.forkSpread * 0.5);
 				drawAntler(egoData.motherId, attachL.x, attachL.y, angleL, P.baseLen * P.branchDecay, P.trunkW, 0, 'L');
+			}
+
+			if (!egoData.fatherId && !egoData.motherId && !userImage) {
+			    ctx.save();
+			    ctx.fillStyle = "white";
+			    ctx.font = "20px Georgia";
+			    ctx.textAlign = "center";
+			    ctx.globalAlpha = 0.6;
+			    ctx.fillText("Portez votre arbre généalogique", W/2, H/2 - 40);
+			    ctx.font = "14px Arial";
+			    ctx.fillText("Bienvenue dans une expérience généa-chimèrique,", W/2, H/2 - 10);
+			    ctx.fillText("cliquez sur 'Créer mon arbre' pour commencer.", W/2, H/2 + 10);
+			    ctx.restore();
 			}
 			
 			// ── Label ego au centre
@@ -754,12 +557,16 @@ const Chimere = (() => {
 	// HIT TEST
 	// ══════════════════════════════════════════════════════
 	function hitTest(ex, ey) {
-		const w = s2w(ex, ey);
-		for (const h of hits) {
-			if (!h.id) continue;
-			if (Math.hypot(w.x - h.wx, w.y - h.wy) < h.r + 6) return h.id;
-		}
-		return null;
+	    const w = s2w(ex, ey); // Conversion écran -> monde
+	    // On boucle à l'envers pour cliquer sur l'élément le plus "en haut" visuellement
+	    for (let i = hits.length - 1; i >= 0; i--) {
+	        const h = hits[i];
+	        if (!h.id) continue;
+	        // On compare la distance dans le monde avec le rayon stocké
+	        const dist = Math.hypot(w.x - h.wx, w.y - h.wy);
+	        if (dist < h.r + (2 / cam.scale)) return h.id; 
+	    }
+	    return null;
 	}
 
 	function showPanel(id) {
@@ -796,12 +603,16 @@ const Chimere = (() => {
 		return vf !== null ? vf : vm;
 	}
 
-	
-
 	// ══════════════════════════════════════════════════════
 	// INTERACTIONS
 	// ══════════════════════════════════════════════════════
 	function bindEvents() {
+		document.getElementById('node-size').addEventListener('input', (e) => {
+		    const val = parseFloat(e.target.value);
+		    P.nodeSize = val;
+		    document.getElementById('node-size-val').textContent = val;
+		    // render(); // Appelle ta fonction de rendu si elle n'est pas déjà dans une boucle d'animation
+		});
 		const btnPhoto = document.getElementById('btn-mode-photo');
 		// Toggle du bouton
 	    if (btnPhoto) {
@@ -811,7 +622,8 @@ const Chimere = (() => {
 		        if (!isPhotoMode) {
 		            // ON VIENT DE PASSER SUR OFF : On enregistre enfin
 		            console.log("Fin d'édition : sauvegarde des réglages...");
-		            await saveImageSettings(); 
+		            btnPhoto.innerHTML = "⌛ Synchronisation...";
+        			await saveImageSettings(); 
 		            btnPhoto.innerHTML = "🖼️ Ajuster la photo : OFF";
 		            btnPhoto.classList.remove('active');
 		        } else {
@@ -863,11 +675,14 @@ const Chimere = (() => {
 		});
 		canvas.addEventListener('wheel', e => {
 		    e.preventDefault();
-		    if (e.shiftKey || isPhotoMode) {
+		    // On utilise Alt pour l'image, ou le mode photo exclusif
+		    if (e.altKey) { 
 		        const delta = e.deltaY < 0 ? 1.05 : 0.95;
 		        imgTransform.scale = Math.min(5, Math.max(0.2, imgTransform.scale * delta));
 		    } else {
-		        cam.scale = Math.min(4, Math.max(0.12, cam.scale * (e.deltaY < 0 ? 1.1 : 0.91)));
+		        // Zoom classique de la caméra
+		        const zoomSpeed = e.deltaY < 0 ? 1.1 : 0.91;
+		        cam.scale = Math.min(4, Math.max(0.12, cam.scale * zoomSpeed));
 		    }
 		}, { passive: false });
 		let td=0;
@@ -900,9 +715,6 @@ const Chimere = (() => {
 		    }
 		}, { passive: false });
 		canvas.addEventListener('touchend', async () => { 
-		    if (drag.on && isPhotoMode) {
-		        await saveImageSettings();
-		    }
 		    drag.on = false; 
 		});
 		window.addEventListener('resize', resize);
@@ -1012,12 +824,6 @@ const Chimere = (() => {
 	function resize() { W=canvas.width=window.innerWidth; H=canvas.height=window.innerHeight; }
 	function resetView() { cam = { x:0, y:40, scale:0.92 }; }
 
-	// Ajouter ou mettre à jour un individu à la volée
-	// Ex : Chimere.addPerson({ id:'ggf1', name:'Louis Durand', birth:1860, fatherId:null, motherId:null })
-	//      puis relier : Chimere.DB.people['fff1'].fatherId = 'ggf1'
-	function addPerson(person) { DB.people[person.id] = person; }
-	function rebuild() { /* le rendu est continu, rien à reconstruire */ }
-
 	function exportPNG() {
 		const a = document.createElement('a');
 		a.download = 'chimere-genealogique.png';
@@ -1027,25 +833,23 @@ const Chimere = (() => {
 	function loop() { render(); requestAnimationFrame(loop); }
 	async function init() {
 	    const urlParams = new URLSearchParams(window.location.search);
-	    // On utilise UNE SEULE variable cohérente pour toute la fonction
 	    let userId = urlParams.get('u'); 
 	    const btnEdit = document.getElementById('btn-edit');
 
 	    if (userId) {
-	        console.log("Tentative de chargement Cloud pour :", userId);
 	        const cloudData = await db_load(userId);
 	        
 	        if (cloudData) {
 	            DB = cloudData;
+	            // CRUCIAL : On s'assure que l'ego est bien celui de l'URL
+    			if(DB.ego !== userId) DB.ego = userId;
 	            isDataLoaded = true;
 	            console.log("Données Cloud chargées.");
-
-	            const ego = DB.people[DB.ego];
+	            const userData = DB.people[userId];
 	            
 	            // --- Restauration des réglages des bois ---
-	            if (ego && ego.treeSettings) {
-	                Object.assign(P, ego.treeSettings);
-	                
+	            if (userData && userData.treeSettings) {
+	                Object.assign(P, userData.treeSettings);
 	                // Mise à jour visuelle des sliders
 	                if(document.getElementById('slider-spread')) document.getElementById('slider-spread').value = P.forkSpread;
 	                if(document.getElementById('slider-decay')) document.getElementById('slider-decay').value = P.branchDecay;
@@ -1058,47 +862,43 @@ const Chimere = (() => {
 	            }
 
 	            // --- CHARGEMENT DE LA PHOTO ---
-	            if (ego && ego.photoUrl) {
+	            if (userData && userData.photoUrl) {
 	                const img = new Image();
 	                img.crossOrigin = "anonymous";
 	                img.onload = () => { userImage = img; };
-	                img.src = ego.photoUrl;
+	                img.src = userData.photoUrl;
 	            }
-	            if (ego && ego.imgSettings) imgTransform = ego.imgSettings;
+	            if (userData && userData.imgSettings) imgTransform = userData.imgSettings;
+	            if (btnEdit) btnEdit.innerHTML = "✎ Modifier mon arbre";
+
 
 	        } else {
-	            console.warn("Utilisateur inconnu, chargement du local.");
-	            await loadData('./datatrees/genealogie.json');
+	        	// CAS : L'ID est dans l'URL mais n'existe pas encore sur le Cloud
+	            DB = {
+	                "ego": userId,
+	                "people": { [userId]: { "id": userId, "name": "Prénom Nom", "birth": null, "death": null, "place": "Lieu", "fatherId": null, "motherId": null, "children": [], "order": null }
+	                }
+	            };
+	            isDataLoaded = true;
+	            if (btnEdit) btnEdit.innerHTML = "✨ Créer mon arbre";
 	        }
-	        if (btnEdit) btnEdit.innerHTML = "✎ Modifier mon arbre";
+	        
 
 	    } else {
-	        // --- CAS CHIMÈRE ---
+	        // CAS : Pas d'ID du tout dans l'URL (Nouvelle Chimère)
 	        const randomNumber = Math.floor(1000 + Math.random() * 9000);
 	        userId = `chime-${randomNumber}`; // On remplit userId ici aussi
-
 	        urlParams.set('u', userId);
-	        const newUrl = `${window.location.pathname}?${urlParams.toString()}`;
-	        window.history.replaceState({}, '', newUrl);
+	        window.history.replaceState({}, '', `${window.location.pathname}?${urlParams.toString()}`);
 	        
-	        console.log("Nouvelle entité générée :", userId);
-
-	        if (btnEdit) btnEdit.innerHTML = "✨ Créer mon arbre";
-	        await loadData('./datatrees/genealogie.json');
-	    }
-
-	    // --- SÉCURITÉ : On s'assure que l'ID existe dans DB.people ---
-	    // On utilise userId qui est maintenant défini dans tous les cas
-	    if (DB && DB.people && !DB.people[userId]) {
-	        DB.people[userId] = {
-	            id: userId,
-	            name: userId.charAt(0).toUpperCase() + userId.slice(1),
-	            fatherId: null,
-	            motherId: null,
-	            children: []
+		    DB = {
+	            "ego": userId,
+	            "people": {
+	                [userId]: { "id": userId, "name": "Nouvel Arbre", "fatherId": null, "motherId": null, "children": [] }
+	            }
 	        };
-	        // Si c'est une nouvelle chimère, on définit souvent cet ID comme l'ego (racine)
-	        if (!DB.ego) DB.ego = userId; 
+	        isDataLoaded = true;
+	        if (btnEdit) btnEdit.innerHTML = "✨ Créer mon arbre";
 	    }
 
 	    // --- INITIALISATION CANVAS ---
@@ -1112,7 +912,11 @@ const Chimere = (() => {
 	    requestAnimationFrame(loop);
 	}
 
-	return { init, handleImage, resetView, exportPNG, goToEdit, addPerson, rebuild, get DB() { return DB; }, cam, P };
+	return { init, handleImage, resetView, exportPNG, goToEdit, get DB() { return DB; }, cam, P };
 }) ();
 
 window.addEventListener('DOMContentLoaded', Chimere.init);
+
+/**
+ * Fin du code. 
+ */ 

@@ -26,11 +26,11 @@ canvas:active { cursor:grabbing; }
 #panel .sub { color:#6a7a3a; font-size:11px; }
 #panel .gen { color:#9aaa50; font-style:italic; font-size:11px; margin-top:4px; }
 #hint {
-	position:absolute; left:14px; bottom:14px;
+	position:absolute; right:14px; bottom:14px;
 	font-size:11px; color:#3a3a1e; line-height:1.9; pointer-events:none;
 }
 #controls {
-	position: absolute; left: 14px; top: 70px; width: 200px;
+	position: absolute; left: 14px; bottom: 14px; width: 200px;
 	background: rgba(10, 10, 6, 0.9); border: 1px solid #3a3a28;
 	padding: 12px; border-radius: 8px; font-size: 11px; z-index: 100;
 }
